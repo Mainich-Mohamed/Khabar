@@ -1,0 +1,16 @@
+# Secrets: injected at runtime by docker compose (env_file), never baked into the image
+.env
+.env.*
+
+# Local environments and caches
+.venv*
+.ci-venv
+__pycache__
+*.pyc
+.pytest_cache
+
+# CI output, git history, generated files
+reports
+.git
+brag-output
+preview.html
