@@ -36,7 +36,7 @@ def _hours(raw: str) -> list[int]:
 
 
 def get_settings() -> Settings:
-    env = lambda k, d="": (os.environ.get(k) or d).strip() 
+    env = lambda k, d="": (os.environ.get(k) or "").strip() or d
     return Settings(
         database_url=env("DATABASE_URL", "postgresql://news:news@localhost:5433/news"),
         smtp_host=env("SMTP_HOST", "smtp.gmail.com"),
