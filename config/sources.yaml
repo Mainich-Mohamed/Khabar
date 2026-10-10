@@ -1,0 +1,50 @@
+categories:
+  geopolitics: "Geopolitics"
+  morocco: "Morocco"
+  economy: "Economy"
+  tech: "Tech & AI"
+  engineering: "Software & Engineering"
+  science: "Science & Engineering"
+
+sources:
+  # Geopolitical News
+  - {name: Reuters, category: geopolitics, lang: en, weight: 1.0, url: "https://news.google.com/rss/search?q=site:reuters.com/world&hl=en-US&gl=US&ceid=US:en"}
+  - {name: AP News World, category: geopolitics, lang: en, weight: 1.0, url: "https://news.google.com/rss/search?q=site:apnews.com/hub/world-news&hl=en-US&gl=US&ceid=US:en"}
+  - {name: Al Jazeera, category: geopolitics, lang: en, weight: 1.0, url: "https://www.aljazeera.com/xml/rss/all.xml"}
+  - {name: Middle East Eye, category: geopolitics, lang: en, weight: 0.9, url: "https://www.middleeasteye.net/rss"}
+  - {name: BBC World, category: geopolitics, lang: en, weight: 0.9, url: "https://feeds.bbci.co.uk/news/world/rss.xml"}
+  - {name: Deutsche Welle,    category: geopolitics, lang: en, weight: 0.9, url: "https://rss.dw.com/xml/rss-en-all"}
+  - {name: Foreign Policy, category: geopolitics, lang: en, weight: 0.9, url: "https://foreignpolicy.com/feed/"}
+  - {name: The Diplomat, category: geopolitics, lang: en, weight: 0.9, url: "https://thediplomat.com/feed/"}
+
+  # Moroccan News
+  - {name: Hespress FR, category: morocco, lang: fr, weight: 0.8, url: "https://fr.hespress.com/feed"}
+  - {name: TelQuel, category: morocco, lang: fr, weight: 0.8, url: "https://telquel.ma/feed"} 
+  - {name: Médias24,         category: morocco, lang: fr, weight: 0.8, url: "https://medias24.com/feed/"}
+  - {name: L'Opinion, category: morocco, lang: fr, weight: 0.8, url: "https://news.google.com/rss/search?q=site:lopinion.ma&hl=fr&gl=MA&ceid=MA:fr"}
+  - {name: The Voice (صوت المغرب), category: morocco, lang: ar, weight: 0.8, url: "https://thevoice.ma/feed"}
+  - {name: Al Islah (الإصلاح), category: morocco, lang: ar, weight: 0.8, url: "https://alislah.ma/feed"}
+
+  # Economic News
+  - {name: Reuters Business, category: economy, lang: en, weight: 1.0, url: "https://news.google.com/rss/search?q=site:reuters.com+business&hl=en-US&gl=US&ceid=US:en"}
+  - {name: CNBC World, category: economy, lang: en, weight: 0.8, url: "https://www.cnbc.com/id/100727362/device/rss/rss.html"}
+  - {name: Financial Times (Economy), category: economy, lang: en, weight: 1.0, url: "https://www.ft.com/global-economy?format=rss"}
+  - {name: Bloomberg Markets, category: economy, lang: en, weight: 1.0, url: "https://news.google.com/rss/search?q=site:bloomberg.com/markets&hl=en-US&gl=US&ceid=US:en"}
+
+  # Tech & AI News
+  - {name: Ars Technica,     category: tech, lang: en, weight: 0.9, url: "https://feeds.arstechnica.com/arstechnica/index"}
+  - {name: MIT Tech Review,  category: tech, lang: en, weight: 0.9, url: "https://www.technologyreview.com/feed/"}
+  - {name: TechCrunch, category: tech, lang: en, weight: 0.9, url: "https://techcrunch.com/feed/"}
+  - {name: IEEE Spectrum, category: tech, lang: en, weight: 0.9, url: "https://spectrum.ieee.org/feeds/feed.rss"}
+
+  # SWE, Architecture & Engineering
+  - {name: InfoQ, category: tech, lang: en, weight: 0.9, url: "https://feed.infoq.com/"}
+  - {name: Lobsters, category: tech, lang: en, weight: 0.9, url: "https://lobste.rs/rss"}
+  - {name: The Pragmatic Engineer, category: tech, lang: en, weight: 0.9, url: "https://blog.pragmaticengineer.com/rss/"}
+  - {name: BleepingComputer, category: tech, lang: en, weight: 0.8, url: "https://www.bleepingcomputer.com/feed/"}
+
+  # Natural Science & Engineering
+  - {name: Nature News, category: science, lang: en, weight: 1.0, url: "https://www.nature.com/nature.rss"}
+  - {name: Quanta Magazine, category: science, lang: en, weight: 0.9, url: "https://www.quantamagazine.org/feed/"}
+  - {name: Phys.org, category: science, lang: en, weight: 0.9, url: "https://phys.org/rss-feed/"}
+  - {name: Tech Xplore, category: engineering, lang: en, weight: 0.9, url: "https://techxplore.com/rss-feed/"}
