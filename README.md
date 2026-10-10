@@ -1,10 +1,46 @@
 # Khabar
 
+**Your news, summarized and in your inbox.**
+
 https://github.com/user-attachments/assets/677b5a81-b5b6-48bb-b03a-5951912b7717
 
-Personal news brief: RSS ingestion, LLM summaries per category, delivered by email three times a day.
 
-https://github.com/user-attachments/assets/xxxxxxxx
+Khabar reads trusted news outlets, groups the stories by topic, and emails you a short AI summary three times a day, with a link to every source. You stay informed in a few minutes, without scrolling.
 
-## Run it
-docker compose up -d
+## Features
+
+- **Three briefs a day:** morning, afternoon and evening
+- **By topic:** geopolitics, Morocco, economy, tech/AI, science
+- **Trusted sources only**, with a link on every story
+- **No repeats:** stories you've already seen are skipped, and real developments are flagged as updates
+- **Free to run:** uses free LLM tiers, with automatic fallbacks
+
+## How it works
+
+RSS feeds → rank by source trust and recency → LLM summary per topic → email
+
+## Quick start
+
+```bash
+git clone https://github.com/Mainich-Mohamed/Khabar.git
+cd Khabar
+cp .env.example .env        # add your Gmail App Password and free LLM keys
+docker compose up -d db
+docker compose run --rm app preview     # try it without sending
+docker compose up -d --build scheduler  # run it automatically
+```
+
+## Stack
+
+Python · PostgreSQL · Docker · Gmail SMTP · Groq / OpenRouter / Gemini
+
+## Roadmap
+
+- [x] Email briefs with deduplication
+- [ ] Sunday weekly brief
+- [ ] Always-on hosting
+- [ ] Mobile app
+
+## License
+
+MIT
