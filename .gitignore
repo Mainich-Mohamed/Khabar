@@ -17,6 +17,7 @@ venv/
 compare.html
 .agents/
 CLAUDE.md
+HANDOFF.md
 
 # Editors / OS
 .vscode/
