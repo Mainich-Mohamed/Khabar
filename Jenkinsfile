@@ -8,6 +8,11 @@ pipeline {
         buildDiscarder(logRotator(numToKeepStr: '20'))
     }
 
+    triggers {
+        // Jenkins is local, so GitHub can't call a webhook
+        pollSCM('H/5 * * * *')
+    }
+
     stages {
         stage('Python') {
             agent {
