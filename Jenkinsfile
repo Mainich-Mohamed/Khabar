@@ -87,6 +87,26 @@ pipeline {
 
     post {
         always {
+            script {
+                // Commit status on GitHub. Never fail the build because of this call
+                def states = [SUCCESS: 'success', FAILURE: 'failure', UNSTABLE: 'failure', ABORTED: 'error']
+                def state = states.get(currentBuild.currentResult, 'error')
+                try {
+                    withCredentials([string(credentialsId: 'github-status-token', variable: 'GH_TOKEN')]) {
+                        sh """
+                            curl -sS -f -X POST \\
+                              -H "Accept: application/vnd.github+json" \\
+                              -H "Authorization: Bearer \$GH_TOKEN" \\
+                              -H "X-GitHub-Api-Version: 2022-11-28" \\
+                              https://api.github.com/repos/Mainich-Mohamed/Khabar/statuses/${env.GIT_COMMIT} \\
+                              -d '{"state":"${state}","context":"jenkins/khabar","description":"Build #${env.BUILD_NUMBER}: ${currentBuild.currentResult}","target_url":"${env.BUILD_URL}"}' \\
+                              -o /dev/null
+                        """
+                    }
+                } catch (err) {
+                    echo "WARNING: could not set the GitHub commit status: ${err.message}"
+                }
+            }
             cleanWs()
         }
     }
