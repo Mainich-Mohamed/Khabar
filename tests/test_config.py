@@ -5,7 +5,7 @@ from app.config import _hours, get_settings, load_sources
 ENV_KEYS = ["DATABASE_URL", "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "EMAIL_TO",
             "SOURCES_PATH", "MAX_PER_CATEGORY", "TIMEZONE", "DIGEST_LANGUAGE", "DIGEST_HOURS",
             "MAX_STORIES_PER_CATEGORY", "GEMINI_API_KEY", "GEMINI_MODEL", "GEMINI_MAX_INPUT",
-            "GEMINI_LEAD_CHARS", "GEMINI_INTERVAL"]
+            "GEMINI_LEAD_CHARS", "GEMINI_INTERVAL", "UPDATE_LOOKBACK_HOURS"]
 
 
 @pytest.fixture
@@ -45,6 +45,7 @@ def test_settings_defaults(clean_env):
     assert s.email_to == []
     assert s.gemini_api_key == ""
     assert s.gemini_interval == 7.0
+    assert s.update_lookback_hours == 48
 
 
 def test_settings_parses_env(clean_env):
@@ -53,12 +54,14 @@ def test_settings_parses_env(clean_env):
     clean_env.setenv("DIGEST_HOURS", "8,20")
     clean_env.setenv("GEMINI_INTERVAL", "2.5")
     clean_env.setenv("MAX_STORIES_PER_CATEGORY", "4")
+    clean_env.setenv("UPDATE_LOOKBACK_HOURS", "24")
     s = get_settings()
     assert s.smtp_password == "abcdefghijklmnop"
     assert s.email_to == ["a@x.com", "b@y.com"]
     assert s.digest_hours == [8, 20]
     assert s.gemini_interval == 2.5
     assert s.max_stories_per_category == 4
+    assert s.update_lookback_hours == 24
 
 
 @pytest.mark.parametrize("key, attr, default", [

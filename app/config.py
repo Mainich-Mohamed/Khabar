@@ -26,6 +26,7 @@ class Settings:
     gemini_max_input: int          # articles sent per category
     gemini_lead_chars: int
     gemini_interval: float         # seconds between calls (free tier per-minute limit)
+    update_lookback_hours: int     # sent stories this recent are compared with new ones (updates/repeats)
 
 
 def _hours(raw: str) -> list[int]:
@@ -55,6 +56,7 @@ def get_settings() -> Settings:
         gemini_max_input=int(env("GEMINI_MAX_INPUT", "25")),
         gemini_lead_chars=int(env("GEMINI_LEAD_CHARS", "900")),
         gemini_interval=float(env("GEMINI_INTERVAL", "7")),
+        update_lookback_hours=int(env("UPDATE_LOOKBACK_HOURS", "48")),
     )
 
 

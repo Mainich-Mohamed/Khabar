@@ -36,13 +36,16 @@ class FakeSummarizer:
     label = "fake"
 
     def __init__(self, behaviour: dict):
-        self.behaviour, self.calls = behaviour, []
+        self.behaviour, self.calls, self.previous = behaviour, [], {}
 
-    def summarize(self, label, arts):
+    def summarize(self, label, arts, previous=None):
         self.calls.append(label)
+        self.previous[label] = previous
         result = self.behaviour[label]
         if isinstance(result, Exception):
             raise result
+        if isinstance(result, list):      # explicit stories, e.g. with statuses
+            return result, Usage(10, 2)
         return [Story(title=f"{label} story", summary="s", sources=[], single_source=True)], Usage(10, 2)
 
 
@@ -95,6 +98,50 @@ def test_summarize_sections_without_summarizer(sources_cfg, article, settings):
     assert fallbacks == ["geopolitics", "tech"]
     assert errors == [] and usage.input_tokens == 0
     assert all(s.is_fallback for s in sections)
+
+
+def status_story(title, status="new", previous_title=None) -> Story:
+    return Story(title=title, summary="s", sources=[], single_source=True,
+                 status=status, previous_title=previous_title)
+
+
+def test_summarize_sections_passes_each_category_its_history(sources_cfg, article, settings):
+    z = FakeSummarizer({"Geopolitics": None, "Tech & AI": None})
+    p = prepared(sources_cfg, article)
+    p.previous = {"geopolitics": [{"title": "Old geo", "summary": None}]}
+    summarize_sections(z, p, settings, [])
+    assert z.previous == {"Geopolitics": [{"title": "Old geo", "summary": None}], "Tech & AI": None}
+
+
+def test_summarize_sections_moves_repeats_to_dropped(sources_cfg, article, settings):
+    z = FakeSummarizer({"Geopolitics": [status_story("New"), status_story("Upd", "update", "Old"),
+                                        status_story("Rep", "repeat", "Older")],
+                        "Tech & AI": [status_story("Only rep", "repeat", "Old tech")]})
+    sections, _, fallbacks = summarize_sections(z, prepared(sources_cfg, article), settings, [])
+    geo, tech = sections
+    assert [s.title for s in geo.stories] == ["New", "Upd"]
+    assert [s.title for s in geo.dropped] == ["Rep"]
+    assert tech.stories == [] and [s.title for s in tech.dropped] == ["Only rep"]
+    assert not tech.is_fallback and fallbacks == []      # all repeats is not an LLM failure
+
+
+# --------------------------------------------------------------------------- prepare (sources/ingest/DB faked)
+def test_prepare_loads_history_with_lookback(monkeypatch, sources_cfg, article, settings):
+    seen = {}
+
+    def fetch_recent_stories(conn, hours):
+        seen["hours"] = hours
+        return {"tech": [{"title": "Old", "summary": None}]}
+
+    monkeypatch.setattr(pipeline, "load_sources", lambda path: sources_cfg)
+    monkeypatch.setattr(pipeline, "ingest_all", lambda conn, sources, insert: (0, []))
+    monkeypatch.setattr(pipeline, "extract_leads", lambda conn, arts, save: None)
+    monkeypatch.setattr(pipeline, "db", SimpleNamespace(
+        insert_article=None, save_lead=None, fetch_recent_stories=fetch_recent_stories,
+        fetch_all_unsent=lambda conn: [article(1, category="tech")]))
+    p = pipeline.prepare(None, settings, cap=5)
+    assert seen["hours"] == 48
+    assert p.previous == {"tech": [{"title": "Old", "summary": None}]}
 
 
 # --------------------------------------------------------------------------- run_digest (DB/email/LLM faked)

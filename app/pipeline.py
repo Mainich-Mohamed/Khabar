@@ -1,6 +1,6 @@
 """The digest run: ingest -> select -> extract -> summarize -> email -> store"""
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from app import db
@@ -21,6 +21,7 @@ class Prepared:
     candidates: dict[str, list[dict]]     # category -> ranked articles (lead extracted)
     new_articles: int
     errors: list[str]
+    previous: dict[str, list[dict]] = field(default_factory=dict)   # category -> stories sent recently
 
 
 @dataclass
@@ -56,7 +57,8 @@ def prepare(conn, s: Settings, cap: int) -> Prepared:
         by_cat.setdefault(a["category"], []).append(a)
     candidates = {k: rank(v, cfg)[:cap] for k, v in by_cat.items()}
     extract_leads(conn, [a for v in candidates.values() for a in v], db.save_lead)
-    return Prepared(cfg, unsent, candidates, new, errors)
+    previous = db.fetch_recent_stories(conn, s.update_lookback_hours)
+    return Prepared(cfg, unsent, candidates, new, errors, previous)
 
 
 def summarize_sections(summarizer: Summarizer | None, p: Prepared, s: Settings,
@@ -71,9 +73,13 @@ def summarize_sections(summarizer: Summarizer | None, p: Prepared, s: Settings,
         try:
             if summarizer is None or quota_gone:
                 raise LLMError("no summarizer available")
-            stories, u = summarizer.summarize(label, arts)
+            stories, u = summarizer.summarize(label, arts, p.previous.get(key))
             usage.add(u)
-            sections.append(Section(key=key, label=label, stories=stories))
+            shown = [st for st in stories if st.status != "repeat"]
+            dropped = [st for st in stories if st.status == "repeat"]
+            for st in dropped:
+                log.info("Dropped repeat in %s: %r (repeat of %r)", key, st.title, st.previous_title)
+            sections.append(Section(key=key, label=label, stories=shown, dropped=dropped))
         except LLMError as exc:
             if isinstance(exc, QuotaExhausted):
                 quota_gone = True   # don't burn time retrying the remaining categories
