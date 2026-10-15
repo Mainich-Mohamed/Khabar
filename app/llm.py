@@ -29,7 +29,16 @@ Strict rules:
 - If an article is only a headline with no text, stay general rather than guessing specifics.
 - List in article_ids EVERY provided article number that covers the story.
 - Order stories from most to least important.
-- Write the headline and summary in {language}, whatever the language of the source articles."""
+- Write the headline and summary in {language}, whatever the language of the source articles.
+
+You may also receive stories already emailed to the reader, numbered P1, P2, ... Set status on every story:
+- "new": not covered by any previously sent story.
+- "update": the same event as a previously sent story AND the articles add new facts. Set previous to
+  that story's number (P3 -> 3) and start the summary with what changed.
+- "repeat": the same event as a previously sent story and the articles add NO new fact. Set previous
+  to that story's number.
+Use "repeat" only when you are certain nothing new was reported. If you are unsure, use "update".
+If no previously sent stories are given, every story is "new"."""
 
 # Standard JSON Schema; converted to Gemini's OpenAPI-style dialect before sending
 STORIES_SCHEMA = {
@@ -47,8 +56,12 @@ STORIES_SCHEMA = {
                         "items": {"type": "integer"},
                         "description": "Numbers of ALL provided articles covering this story.",
                     },
+                    "status": {"type": "string", "enum": ["new", "update", "repeat"],
+                               "description": "new, update or repeat, compared with previously sent stories."},
+                    "previous": {"type": "integer",
+                                 "description": "Number of the previously sent story (P3 -> 3) for update or repeat."},
                 },
-                "required": ["title", "summary", "article_ids"],
+                "required": ["title", "summary", "article_ids", "status"],
             },
         }
     },
@@ -81,10 +94,13 @@ class Story:
     sources: list[dict]            # [{"name": ..., "url": ...}], one per outlet
     single_source: bool
     article_ids: list[int] = field(default_factory=list)   # DB ids, for traceability
+    status: str = "new"                    # new | update | repeat (repeats are dropped by the pipeline)
+    previous_title: str | None = None      # headline of the earlier story, for update and repeat
 
     def to_dict(self) -> dict:
         return {"title": self.title, "summary": self.summary, "sources": self.sources,
-                "single_source": self.single_source, "article_ids": self.article_ids}
+                "single_source": self.single_source, "article_ids": self.article_ids,
+                "status": self.status, "previous_title": self.previous_title}
 
 
 # --------------------------------------------------------------------------- helpers
@@ -100,6 +116,11 @@ def format_articles(articles: list[dict], lead_chars: int = 900) -> str:
     return "\n\n".join(blocks)
 
 
+def format_previous(previous: list[dict]) -> str:
+    return "\n".join(f"P{i}. {p['title']}" + (f" | {p['summary']}" if p.get("summary") else "")
+                     for i, p in enumerate(previous, start=1))
+
+
 def parse_json_text(text: str) -> dict:
     """Parse model text as JSON, tolerating <think> blocks, code fences or stray text around it"""
     text = re.sub(r"<think>.*?</think>", "", text or "", flags=re.S).strip()
@@ -112,21 +133,38 @@ def parse_json_text(text: str) -> dict:
         raise LLMError(f"invalid JSON from model: {exc}") from exc
 
 
-def parse_stories(raw_stories, articles: list[dict], max_stories: int) -> list[Story]:
-    """Validate the model output and map article numbers back to real URLs"""
-    stories = []
+def _valid_number(n, count: int) -> int | None:
+    """1-based reference from the model: an int (or digit string) within range, else None"""
+    if isinstance(n, str) and n.strip().isdigit():
+        n = int(n.strip())
+    if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= count:
+        return n
+    return None
+
+
+def parse_stories(raw_stories, articles: list[dict], max_stories: int,
+                  previous: list[dict] | None = None) -> list[Story]:
+    """Validate the model output and map article numbers back to real URLs.
+    Update and repeat must point at a real previous story; otherwise the story is kept as new"""
+    previous = previous or []
+    stories, kept = [], 0
     for raw in raw_stories if isinstance(raw_stories, list) else []:
         if not isinstance(raw, dict):
             continue
         title, summary = str(raw.get("title", "")).strip(), str(raw.get("summary", "")).strip()
         nums = []
         for n in raw.get("article_ids") or []:
-            if isinstance(n, str) and n.strip().isdigit():
-                n = int(n.strip())
-            if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= len(articles) and n not in nums:
+            n = _valid_number(n, len(articles))
+            if n is not None and n not in nums:
                 nums.append(n)
         if not title or not summary or not nums:
             continue  # ungrounded story: drop it
+        status, previous_title = str(raw.get("status", "")).strip().lower(), None
+        p = _valid_number(raw.get("previous"), len(previous))
+        if status in ("update", "repeat") and p is not None:
+            previous_title = previous[p - 1]["title"]
+        else:
+            status = "new"   # unknown status, or update/repeat without a real previous story: keep it
         used = [articles[n - 1] for n in nums]
         sources, seen = [], set()
         for a in used:
@@ -134,9 +172,12 @@ def parse_stories(raw_stories, articles: list[dict], max_stories: int) -> list[S
                 seen.add(a["source"])
                 sources.append({"name": a["source"], "url": a["url"]})
         stories.append(Story(title=title, summary=summary, sources=sources,
-                             single_source=len(sources) == 1, article_ids=[a["id"] for a in used]))
-        if len(stories) >= max_stories:
-            break
+                             single_source=len(sources) == 1, article_ids=[a["id"] for a in used],
+                             status=status, previous_title=previous_title))
+        if status != "repeat":
+            kept += 1
+            if kept >= max_stories:
+                break
     return stories
 
 
@@ -264,7 +305,8 @@ class Summarizer:
             if wait > 0:
                 time.sleep(wait)   # stay under the free tier's per-minute limit
 
-    def summarize(self, category_label: str, articles: list[dict]) -> tuple[list[Story], Usage]:
+    def summarize(self, category_label: str, articles: list[dict],
+                  previous: list[dict] | None = None) -> tuple[list[Story], Usage]:
         system = SYSTEM_PROMPT.format(language=self.language)
         batch = articles[: self.max_input]
         prompt = "\n".join([
@@ -275,16 +317,21 @@ class Summarizer:
             "",
             format_articles(batch, self.lead_chars),
         ])
+        if previous:
+            prompt += "\n\nPreviously sent stories:\n\n" + format_previous(previous)
         self._wait_turn()
         try:
             data, usage = self.client.generate(system, prompt)
         finally:
             self._last_call = time.monotonic()
-        stories = parse_stories(data.get("stories", []), batch, self.max_stories)
+        stories = parse_stories(data.get("stories", []), batch, self.max_stories, previous)
         if not stories:
             raise LLMError("model returned no valid stories")
-        log.info("%-24s %2d articles -> %d stories (%d in / %d out tokens) [%s]",
-                 category_label, len(batch), len(stories), usage.input_tokens, usage.output_tokens, self.label)
+        updates = sum(st.status == "update" for st in stories)
+        repeats = sum(st.status == "repeat" for st in stories)
+        log.info("%-24s %2d articles -> %d stories, updates=%d repeats=%d (%d in / %d out tokens) [%s]",
+                 category_label, len(batch), len(stories), updates, repeats,
+                 usage.input_tokens, usage.output_tokens, self.label)
         return stories, usage
 
 

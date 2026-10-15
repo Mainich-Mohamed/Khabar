@@ -5,7 +5,8 @@ import pytest
 
 from app import llm
 from app.llm import (GeminiClient, LLMError, QuotaExhausted, Summarizer, Usage, _retry_delay,
-                     _to_gemini_schema, format_articles, make_summarizer, parse_json_text, parse_stories)
+                     _to_gemini_schema, format_articles, format_previous, make_summarizer, parse_json_text,
+                     parse_stories)
 
 
 # --------------------------------------------------------------------------- format_articles
@@ -99,6 +100,47 @@ def test_parse_stories_strips_whitespace(arts):
     assert st.to_dict()["title"] == "T"
 
 
+# --------------------------------------------------------------------------- update detection
+PREVIOUS = [{"title": "Ceasefire agreed", "summary": "Both sides agreed."},
+            {"title": "Rates held", "summary": None}]
+
+
+def test_format_previous_numbers_from_p1_and_skips_missing_summary():
+    assert format_previous(PREVIOUS) == "P1. Ceasefire agreed | Both sides agreed.\nP2. Rates held"
+
+
+def test_parse_stories_update_and_repeat_point_at_previous(arts):
+    raw = [{"title": "Ceasefire broken", "summary": "S", "article_ids": [1], "status": "update", "previous": 1},
+           {"title": "Rates still held", "summary": "S", "article_ids": [2], "status": "repeat", "previous": "2"}]
+    up, rep = parse_stories(raw, arts, 5, PREVIOUS)
+    assert (up.status, up.previous_title) == ("update", "Ceasefire agreed")
+    assert (rep.status, rep.previous_title) == ("repeat", "Rates held")
+    assert up.to_dict()["previous_title"] == "Ceasefire agreed"
+
+
+@pytest.mark.parametrize("status,previous", [
+    ("repeat", None), ("repeat", 0), ("repeat", 3), ("repeat", True), ("repeat", "x"),   # no real previous
+    ("update", None), ("bogus", 1), ("", 1), ("new", 1),
+])
+def test_parse_stories_doubtful_cases_are_kept_as_new(arts, status, previous):
+    raw = [{"title": "T", "summary": "S", "article_ids": [1], "status": status, "previous": previous}]
+    [st] = parse_stories(raw, arts, 5, PREVIOUS)
+    assert (st.status, st.previous_title) == ("new", None)
+
+
+def test_parse_stories_without_history_everything_is_new(arts):
+    raw = [{"title": "T", "summary": "S", "article_ids": [1], "status": "repeat", "previous": 1}]
+    [st] = parse_stories(raw, arts, 5)
+    assert st.status == "new"
+
+
+def test_parse_stories_repeats_do_not_count_toward_cap(arts):
+    raw = [{"title": f"R{i}", "summary": "S", "article_ids": [1], "status": "repeat", "previous": 1}
+           for i in range(3)] + [{"title": "N", "summary": "S", "article_ids": [2], "status": "new"}]
+    stories = parse_stories(raw, arts, 1, PREVIOUS)
+    assert [s.title for s in stories] == ["R0", "R1", "R2", "N"]
+
+
 # --------------------------------------------------------------------------- schema / retry helpers
 def test_to_gemini_schema_uppercases_nested_types():
     out = _to_gemini_schema(llm.STORIES_SCHEMA)
@@ -106,7 +148,10 @@ def test_to_gemini_schema_uppercases_nested_types():
     story = out["properties"]["stories"]["items"]
     assert out["properties"]["stories"]["type"] == "ARRAY"
     assert story["properties"]["article_ids"]["items"]["type"] == "INTEGER"
-    assert story["required"] == ["title", "summary", "article_ids"]
+    assert story["required"] == ["title", "summary", "article_ids", "status"]
+    assert story["properties"]["status"] == {
+        "type": "STRING", "enum": ["new", "update", "repeat"],
+        "description": "new, update or repeat, compared with previously sent stories."}
     assert llm.STORIES_SCHEMA["type"] == "object"     # original left untouched
 
 
@@ -284,6 +329,22 @@ def test_summarizer_no_valid_stories_raises(article):
     client = FakeClient({"stories": [{"title": "T", "summary": "S", "article_ids": [99]}]})
     with pytest.raises(LLMError, match="no valid stories"):
         summarizer(client).summarize("X", [article(1)])
+
+
+def test_summarizer_sends_history_only_when_given(article):
+    client = FakeClient({"stories": [{"title": "T", "summary": "S", "article_ids": [1], "status": "new"}]})
+    z = summarizer(client)
+    z.summarize("X", [article(1)])
+    z.summarize("X", [article(1)], PREVIOUS)
+    assert "Previously sent" not in client.calls[0][1]
+    assert "P1. Ceasefire agreed" in client.calls[1][1]
+
+
+def test_summarizer_all_repeats_is_not_an_error(article):
+    client = FakeClient({"stories": [{"title": "T", "summary": "S", "article_ids": [1],
+                                      "status": "repeat", "previous": 1}]})
+    [st] = summarizer(client).summarize("X", [article(1)], PREVIOUS)[0]
+    assert st.status == "repeat"      # the pipeline drops it; no fallback to headlines
 
 
 def test_summarizer_missing_stories_key_raises(article):
