@@ -31,6 +31,7 @@ def test_section_modes():
     fb = Section("k", "K", headlines=[headline(1), headline(2)])
     assert fb.is_fallback is True and fb.count() == 2
     assert Section("k", "K").count() == 0
+    assert Section("k", "K", dropped=[story()]).is_fallback is False
 
 
 def test_summary_digest_content():
@@ -85,6 +86,46 @@ def test_summary_digest_payload():
     assert [s["category"] for s in p["sections"]] == ["geo", "tech"]
     assert p["sections"][0]["mode"] == "summary"
     assert p["sections"][0]["stories"][0] == story().to_dict()
+
+
+def update_story(title="Ceasefire broken", previous="Ceasefire agreed") -> Story:
+    st = story(title=title)
+    st.status, st.previous_title = "update", previous
+    return st
+
+
+def repeat_story(title="Rates still held", previous="Rates held") -> Story:
+    st = story(title=title)
+    st.status, st.previous_title = "repeat", previous
+    return st
+
+
+def test_update_story_has_badge_and_earlier_line():
+    d = build_summary_digest([Section("geo", "Geo", stories=[update_story(), story("Fresh news")])], TZ)
+    assert d.html.count(">Update</span>") == 1                    # only the update, not the new story
+    assert "Earlier: Ceasefire agreed" in d.html
+    assert "* [Update] Ceasefire broken\n  Earlier: Ceasefire agreed" in d.text
+    assert "* Fresh news" in d.text
+
+
+def test_update_earlier_line_is_escaped():
+    d = build_summary_digest([Section("geo", "Geo", stories=[update_story(previous="<b>Old</b>")])], TZ)
+    assert "<b>Old</b>" not in d.html and "Earlier: &lt;b&gt;Old&lt;/b&gt;" in d.html
+
+
+def test_repeats_are_not_shown_but_recorded_in_payload():
+    d = build_summary_digest([Section("geo", "Geo", stories=[story()], dropped=[repeat_story()])], TZ)
+    assert "Rates still held" not in d.html and "Rates still held" not in d.text
+    assert "1 stories" in d.subject
+    assert d.payload["sections"][0]["dropped"] == [{"title": "Rates still held", "repeat_of": "Rates held"}]
+
+
+def test_repeat_only_section_is_hidden_but_kept_in_payload():
+    d = build_summary_digest([Section("geo", "Geo", dropped=[repeat_story()])], TZ)
+    assert "nothing new" in d.subject and "Geo" not in d.html
+    [sec] = d.payload["sections"]
+    assert sec["mode"] == "summary" and sec["stories"] == []
+    assert sec["dropped"] == [{"title": "Rates still held", "repeat_of": "Rates held"}]
 
 
 def test_build_headlines_follows_category_order_and_skips_empty():

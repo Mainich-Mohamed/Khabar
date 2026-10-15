@@ -22,10 +22,11 @@ class Section:
     label: str
     stories: list[Story] = field(default_factory=list)   # summary mode
     headlines: list[dict] = field(default_factory=list)  # fallback mode
+    dropped: list[Story] = field(default_factory=list)   # repeats of earlier stories: payload only, never shown
 
     @property
     def is_fallback(self) -> bool:
-        return not self.stories
+        return not self.stories and not self.dropped
 
     def count(self) -> int:
         return len(self.stories) or len(self.headlines)
@@ -45,6 +46,7 @@ def _link(url: str, text: str, style: str = "color:#1a56db;text-decoration:none"
 def build_summary_digest(sections: list[Section], tz: str, fallback_note: bool = True) -> Digest:
     now = datetime.now(ZoneInfo(tz))
     slot = slot_label(now)
+    recorded = [s for s in sections if s.count() or s.dropped]   # payload also keeps repeat-only sections
     sections = [s for s in sections if s.count()]
     total = sum(s.count() for s in sections)
     subject = f"🗞 {slot} brief · {now:%a %d %b} — " + (f"{total} stories" if total else "nothing new")
@@ -83,14 +85,22 @@ def build_summary_digest(sections: list[Section], tz: str, fallback_note: bool =
                                for s in st.sources)
             flag = (' <span style="color:#b45309;font-size:11px">· single source</span>'
                     if st.single_source else "")
+            is_update = st.status == "update" and st.previous_title
+            badge = ('<span style="color:#fff;background:#1a56db;font-size:11px;padding:1px 6px;'
+                     'border-radius:3px;margin-right:6px">Update</span>' if is_update else "")
+            earlier = (f'<div style="font-size:12px;color:#888;margin-bottom:3px">'
+                       f"Earlier: {escape(st.previous_title)}</div>" if is_update else "")
             h.append(
                 '<div style="margin-bottom:18px">'
-                f'<div style="font-weight:600;font-size:15px;margin-bottom:3px">{escape(st.title)}</div>'
+                f'<div style="font-weight:600;font-size:15px;margin-bottom:3px">{badge}{escape(st.title)}</div>'
+                f"{earlier}"
                 f'<div style="font-size:14px;color:#333">{escape(st.summary)}</div>'
                 f'<div style="font-size:12px;color:#888;margin-top:4px">{links}{flag}</div>'
                 "</div>"
             )
-            t.append(f"* {st.title}")
+            t.append(f"* [Update] {st.title}" if is_update else f"* {st.title}")
+            if is_update:
+                t.append(f"  Earlier: {st.previous_title}")
             t.append(f"  {st.summary}")
             for s in st.sources:
                 t.append(f"  - {s['name']}: {s['url']}")
@@ -113,8 +123,9 @@ def build_summary_digest(sections: list[Section], tz: str, fallback_note: bool =
                 if not s.is_fallback
                 else [{"title": r["title"], "sources": [{"name": r["source"], "url": r["url"]}]}
                       for r in s.headlines],
+                "dropped": [{"title": st.title, "repeat_of": st.previous_title} for st in s.dropped],
             }
-            for s in sections
+            for s in recorded
         ],
     }
     return Digest(subject=subject, html="\n".join(h), text="\n".join(t), payload=payload)
