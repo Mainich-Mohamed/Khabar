@@ -76,6 +76,24 @@ def fetch_all_unsent(conn: psycopg.Connection, hours: int = 24) -> list[dict]:
         (hours,),
     ).fetchall()
 
+def fetch_recent_stories(conn: psycopg.Connection, hours: int = 48) -> dict[str, list[dict]]:
+    """Stories emailed in the last `hours`, grouped by category, newest digest first (update detection)"""
+    rows = conn.execute(
+        """
+        SELECT payload FROM digests
+        WHERE kind = 'summary' AND created_at > now() - make_interval(hours => %s)
+        ORDER BY created_at DESC
+        """,
+        (hours,),
+    ).fetchall()
+    by_cat: dict[str, list[dict]] = {}
+    for row in rows:
+        for sec in row["payload"].get("sections", []):
+            for st in sec.get("stories", []):
+                by_cat.setdefault(sec["category"], []).append(
+                    {"title": st["title"], "summary": st.get("summary")})
+    return by_cat
+
 
 def save_lead(conn: psycopg.Connection, article_id: int, lead: str | None, status: str) -> None:
     conn.execute("UPDATE articles SET lead = %s, lead_status = %s WHERE id = %s", (lead, status, article_id))

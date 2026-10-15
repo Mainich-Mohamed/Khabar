@@ -106,6 +106,52 @@ def test_fetch_unsent_caps_per_category_newest_first(conn):
     rows = db.fetch_unsent(conn, per_category=2)
     assert [r["url"] for r in rows] == [url(1), url(2), url(4)]   # ordered by category, then newest
 
+# --------------------------------------------------------------------------- fetch_recent_stories
+def section(category: str, *titles: str, mode: str = "summary") -> dict:
+    """A payload section shaped like build_summary_digest writes it"""
+    if mode == "summary":
+        stories = [{"title": t, "summary": f"{t} summary"} for t in titles]
+    else:
+        stories = [{"title": t, "sources": []} for t in titles]    # headlines mode: no summary key
+    return {"category": category, "label": category, "mode": mode, "stories": stories}
+
+
+def save(conn, *sections: dict, kind: str = "summary", hours_ago: float = 0) -> None:
+    digest_id = db.save_digest(conn, kind, "Subject", {"sections": list(sections)}, None, 0, 0, [])
+    if hours_ago:   # save_digest always stamps now(): move it back in time for window tests
+        conn.execute("UPDATE digests SET created_at = now() - make_interval(hours => %s) WHERE id = %s",
+                     (hours_ago, digest_id))
+
+
+def test_fetch_recent_stories_groups_by_category_newest_first(conn):
+    save(conn, section("tech", "Old tech"), hours_ago=5)
+    save(conn, section("tech", "New tech", "Other tech"), section("economy", "Rates"))
+    assert db.fetch_recent_stories(conn) == {
+        "tech": [{"title": "New tech", "summary": "New tech summary"},
+                 {"title": "Other tech", "summary": "Other tech summary"},
+                 {"title": "Old tech", "summary": "Old tech summary"}],
+        "economy": [{"title": "Rates", "summary": "Rates summary"}],
+    }
+
+
+def test_fetch_recent_stories_respects_window(conn):
+    # 47h / 49h around the 48h default, same reason as the article window tests
+    save(conn, section("tech", "Recent"), hours_ago=47)
+    save(conn, section("tech", "Too old"), hours_ago=49)
+    assert db.fetch_recent_stories(conn) == {"tech": [{"title": "Recent", "summary": "Recent summary"}]}
+    assert db.fetch_recent_stories(conn, hours=24) == {}
+
+
+def test_fetch_recent_stories_keeps_headline_sections_without_summary(conn):
+    save(conn, section("tech", "Just a headline", mode="headlines"))
+    assert db.fetch_recent_stories(conn) == {"tech": [{"title": "Just a headline", "summary": None}]}
+
+
+def test_fetch_recent_stories_ignores_other_kinds(conn):
+    assert db.fetch_recent_stories(conn) == {}
+    save(conn, section("tech", "Raw"), kind="headlines")
+    assert db.fetch_recent_stories(conn) == {}
+
 # --------------------------------------------------------------------------- mark_sent
 @pytest.mark.parametrize("fetch", FETCHERS)
 def test_mark_sent_hides_only_marked_articles(conn, fetch):
