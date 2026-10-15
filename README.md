@@ -40,7 +40,3 @@ Python · PostgreSQL · Docker · Gmail SMTP · Groq / OpenRouter / Gemini
 - [ ] Sunday weekly brief
 - [ ] Always-on hosting
 - [ ] Mobile app
-
-## License
-
-MIT
