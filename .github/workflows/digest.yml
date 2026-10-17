@@ -1,0 +1,43 @@
+name: Digest
+
+on:
+  schedule:
+    # UTC+0
+    - cron: "0 7,16,22 * * *"
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "What to run"
+        type: choice
+        default: check-feeds
+        options: [check-feeds, preview, run]
+
+concurrency:
+  group: digest          # never two digests at once
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Khabar
+        env:
+          COMMAND: ${{ inputs.command || 'run' }}   # scheduled runs have no inputs -> run
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python -m app.main "$COMMAND"
+      - if: inputs.command == 'preview'
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview
+          path: preview.html
