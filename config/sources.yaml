@@ -9,7 +9,7 @@ categories:
 sources:
   # Geopolitical News
   - {name: Reuters, category: geopolitics, lang: en, weight: 1.0, url: "https://news.google.com/rss/search?q=site:reuters.com/world&hl=en-US&gl=US&ceid=US:en"}
-  - {name: AP News World, category: geopolitics, lang: en, weight: 1.0, url: "https://news.google.com/rss/search?q=site:apnews.com/hub/world-news&hl=en-US&gl=US&ceid=US:en"}
+  - {name: AP News World, category: geopolitics, lang: en, weight: 1.0, url: "https://news.google.com/rss/search?q=site:apnews.com/article+world&hl=en-US&gl=US&ceid=US:en"}
   - {name: Al Jazeera, category: geopolitics, lang: en, weight: 1.0, url: "https://www.aljazeera.com/xml/rss/all.xml"}
   - {name: Middle East Eye, category: geopolitics, lang: en, weight: 0.9, url: "https://www.middleeasteye.net/rss"}
   - {name: BBC World, category: geopolitics, lang: en, weight: 0.9, url: "https://feeds.bbci.co.uk/news/world/rss.xml"}
@@ -20,7 +20,7 @@ sources:
   # Moroccan News
   - {name: Hespress FR, category: morocco, lang: fr, weight: 0.8, url: "https://fr.hespress.com/feed"}
   - {name: TelQuel, category: morocco, lang: fr, weight: 0.8, url: "https://telquel.ma/feed"} 
-  - {name: Médias24,         category: morocco, lang: fr, weight: 0.8, url: "https://medias24.com/feed/"}
+  - {name: Médias24,         category: morocco, lang: fr, weight: 0.8, url: "https://news.google.com/rss/search?q=site:medias24.com&hl=fr&gl=MA&ceid=MA:fr"}
   - {name: L'Opinion, category: morocco, lang: fr, weight: 0.8, url: "https://news.google.com/rss/search?q=site:lopinion.ma&hl=fr&gl=MA&ceid=MA:fr"}
   - {name: The Voice (صوت المغرب), category: morocco, lang: ar, weight: 0.8, url: "https://thevoice.ma/feed"}
   - {name: Al Islah (الإصلاح), category: morocco, lang: ar, weight: 0.8, url: "https://alislah.ma/feed"}
