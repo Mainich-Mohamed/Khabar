@@ -2,8 +2,8 @@ name: Digest
 
 on:
   schedule:
-    # UTC+0
-    - cron: "0 7,16,22 * * *"
+    # UTC+0. Minute 10, not 0: GitHub drops or delays runs queued at the top of the hour
+    - cron: "10 7,16,22 * * *"
   workflow_dispatch:
     inputs:
       command:
