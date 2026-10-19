@@ -1,9 +1,7 @@
 name: Digest
 
 on:
-  schedule:
-    # UTC+0. Minute 10, not 0: GitHub drops or delays runs queued at the top of the hour
-    - cron: "10 7,16,22 * * *"
+  # Triggered by 'khabar-trigger' Cloudflare Worker (07:00, 16:00, 22:00 UTC) to avoid GitHub cron delays.
   workflow_dispatch:
     inputs:
       command:
@@ -29,7 +27,7 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Khabar
         env:
-          COMMAND: ${{ inputs.command || 'run' }}   # scheduled runs have no inputs -> run
+          COMMAND: ${{ inputs.command || 'run' }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
