@@ -1,3 +1,6 @@
+import threading
+from concurrent.futures import ThreadPoolExecutor
+
 import httpx
 
 from app import extract
@@ -36,6 +39,25 @@ def test_lead_from_html_respects_budget():
 
 def test_lead_from_html_nothing_to_extract():
     assert _lead_from_html("<html><body></body></html>") is None
+
+
+def test_lead_from_html_parses_one_page_at_a_time(monkeypatch):
+    inside, peak, guard = 0, 0, threading.Lock()
+
+    def fake_extract(html, **kw):
+        nonlocal inside, peak
+        with guard:
+            inside += 1
+            peak = max(peak, inside)
+        threading.Event().wait(0.01)   # long enough for the other threads to try to enter (conftest turns time.sleep into a no-op)
+        with guard:
+            inside -= 1
+        return PARA
+
+    monkeypatch.setattr(extract.trafilatura, "extract", fake_extract)
+    with ThreadPoolExecutor(8) as pool:
+        list(pool.map(_lead_from_html, ["<html></html>"] * 16))
+    assert peak == 1
 
 
 # --------------------------------------------------------------------------- _fetch_one

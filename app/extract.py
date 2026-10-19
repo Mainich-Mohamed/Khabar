@@ -1,5 +1,6 @@
 """Fetch the lead paragraphs of articles so the LLM summarizes real text, not just headlines"""
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlsplit
 
@@ -15,10 +16,15 @@ MAX_WORKERS = 8
 # and aggregators (HN, Lobsters) point at arbitrary sites. Use the RSS title/snippet for these
 SKIP_HOSTS = {"news.google.com"}
 
+# trafilatura (lxml/C) causes heap corruption under thread parallelism
+# Lock serializes parsing while downloads remain parallel
+_PARSE_LOCK = threading.Lock()
+
 
 def _lead_from_html(html: str) -> str | None:
-    text = trafilatura.extract(html, include_comments=False, include_tables=False,
-                               favor_precision=True, deduplicate=True)
+    with _PARSE_LOCK:
+        text = trafilatura.extract(html, include_comments=False, include_tables=False,
+                                   favor_precision=True, deduplicate=True)
     if not text:
         return None
     paragraphs = [p.strip() for p in text.split("\n") if len(p.strip()) > 40]
