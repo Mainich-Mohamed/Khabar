@@ -24,7 +24,7 @@ jobs:
           gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSPHRASE" \
               --symmetric --cipher-algo AES256 -o khabar.dump.gpg khabar.dump
           rm khabar.dump
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: khabar-${{ github.run_id }}
           path: khabar.dump.gpg
