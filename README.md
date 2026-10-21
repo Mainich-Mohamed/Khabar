@@ -13,7 +13,7 @@ Khabar reads trusted news outlets, groups the stories by topic, and emails you a
 - **By topic:** geopolitics, Morocco, economy, tech/AI, software engineering, science
 - **Trusted sources only**, with a link on every story
 - **No repeats:** stories already emailed in the last 48 hours are dropped unless something new happened, in which case they're marked as an **Update**
-- **Free to run:** uses free LLM tiers, with automatic fallbacks
+- **Free to run:** uses Gemini's free tier. If the AI step fails, that topic is sent as plain headlines
 
 ## How it works
 
@@ -24,15 +24,19 @@ RSS feeds → rank by source trust and recency → LLM summary per topic → ema
 ```bash
 git clone https://github.com/Mainich-Mohamed/Khabar.git
 cd Khabar
-cp .env.example .env        # add your Gmail App Password and free LLM keys
+cp .env.example .env        # add your Gmail App Password and a free Gemini key
 docker compose up -d db
 docker compose run --rm app preview     # try it without sending
 docker compose up -d --build scheduler  # run it automatically
 ```
 
+## Run it without your own machine
+
+GitHub Actions runs the digest, [Neon](https://neon.com) holds the database, and a small Cloudflare Worker starts each run on time (GitHub's own cron ran hours late). See `.github/workflows/` and `deploy/cloudflare/`.
+
 ## Stack
 
-Python · PostgreSQL · Docker · Gmail SMTP · Groq / OpenRouter / Gemini
+Python · PostgreSQL (Neon) · Docker · GitHub Actions · Cloudflare Workers · Gmail SMTP · Gemini
 
 ## Roadmap
 
