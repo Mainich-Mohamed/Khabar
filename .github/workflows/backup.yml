@@ -1,0 +1,31 @@
+name: Backup
+
+on:
+  schedule:
+    - cron: "17 3 * * *"   # daily; GitHub's delays don't matter for a backup
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Dump Neon (pg_dump 16, same major as the server)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          docker run --rm -e DATABASE_URL pgvector/pgvector:pg16 \
+            sh -c 'pg_dump "$DATABASE_URL" -Fc --no-owner --no-privileges' > khabar.dump
+          test -s khabar.dump                      # fail loudly on an empty dump
+      - name: Encrypt
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSPHRASE" \
+              --symmetric --cipher-algo AES256 -o khabar.dump.gpg khabar.dump
+          rm khabar.dump
+      - uses: actions/upload-artifact@v4
+        with:
+          name: khabar-${{ github.run_id }}
+          path: khabar.dump.gpg
+          retention-days: 30
