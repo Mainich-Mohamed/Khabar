@@ -45,6 +45,20 @@ jobs:
           else
             exit "$status"
           fi
+      # Dead man's switch: Healthchecks emails you when a slot passes without a success ping,
+      # whatever the cause (Worker down, token expired, GitHub didn't start the job, crash)
+      - name: Report success to Healthchecks
+        if: success() && inputs.command == 'run'
+        continue-on-error: true            # monitoring being down must not fail the digest
+        env:
+          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
+        run: curl -fsS -m 10 --retry 3 "$HEALTHCHECK_URL"
+      - name: Report failure to Healthchecks
+        if: failure() && inputs.command == 'run'
+        continue-on-error: true
+        env:
+          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
+        run: curl -fsS -m 10 --retry 3 "$HEALTHCHECK_URL/fail"
       - if: inputs.command == 'preview'
         uses: actions/upload-artifact@v4
         with:
