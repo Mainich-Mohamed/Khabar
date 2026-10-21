@@ -38,5 +38,5 @@ Python · PostgreSQL · Docker · Gmail SMTP · Groq / OpenRouter / Gemini
 
 - [x] Email briefs with deduplication
 - [ ] Sunday weekly brief
-- [ ] Always-on hosting
+- [x] Always-on hosting
 - [ ] Mobile app

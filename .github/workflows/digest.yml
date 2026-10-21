@@ -17,7 +17,7 @@ concurrency:
 jobs:
   digest:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30    # room for one retry: a run takes up to ~8 min
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -33,7 +33,18 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python -m app.main "$COMMAND"
+          PYTHONFAULTHANDLER: "1"   # on a native crash, print every thread's Python stack
+        # Retry once only if the process was killed by a signal (exit >= 128, e.g. 134 = abort in lxml).
+        # Python errors exit 1 and are not retried: they may happen after the email was sent
+        run: |
+          status=0
+          python -m app.main "$COMMAND" || status=$?
+          if [ "$status" -ge 128 ]; then
+            echo "::warning::Khabar was killed by signal $((status - 128)), retrying once"
+            python -m app.main "$COMMAND"
+          else
+            exit "$status"
+          fi
       - if: inputs.command == 'preview'
         uses: actions/upload-artifact@v4
         with:
