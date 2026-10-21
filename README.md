@@ -10,7 +10,7 @@ Khabar reads trusted news outlets, groups the stories by topic, and emails you a
 ## Features
 
 - **Three briefs a day:** morning, afternoon and evening
-- **By topic:** geopolitics, Morocco, economy, tech/AI, science
+- **By topic:** geopolitics, Morocco, economy, tech/AI, software engineering, science
 - **Trusted sources only**, with a link on every story
 - **No repeats:** stories already emailed in the last 48 hours are dropped unless something new happened, in which case they're marked as an **Update**
 - **Free to run:** uses free LLM tiers, with automatic fallbacks

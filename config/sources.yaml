@@ -3,7 +3,7 @@ categories:
   morocco: "Morocco"
   economy: "Economy"
   tech: "Tech & AI"
-  engineering: "Software & Engineering"
+  engineering: "Software Engineering"
   science: "Science & Engineering"
 
 sources:
@@ -36,15 +36,19 @@ sources:
   - {name: MIT Tech Review,  category: tech, lang: en, weight: 0.9, url: "https://www.technologyreview.com/feed/"}
   - {name: TechCrunch, category: tech, lang: en, weight: 0.9, url: "https://techcrunch.com/feed/"}
   - {name: IEEE Spectrum, category: tech, lang: en, weight: 0.9, url: "https://spectrum.ieee.org/feeds/feed.rss"}
-
-  # SWE, Architecture & Engineering
-  - {name: InfoQ, category: tech, lang: en, weight: 0.9, url: "https://feed.infoq.com/"}
-  - {name: Lobsters, category: tech, lang: en, weight: 0.9, url: "https://lobste.rs/rss"}
-  - {name: The Pragmatic Engineer, category: tech, lang: en, weight: 0.9, url: "https://blog.pragmaticengineer.com/rss/"}
   - {name: BleepingComputer, category: tech, lang: en, weight: 0.8, url: "https://www.bleepingcomputer.com/feed/"}
+
+  # Software Engineering
+  - {name: InfoQ, category: engineering, lang: en, weight: 0.9, url: "https://feed.infoq.com/"}
+  - {name: The Pragmatic Engineer, category: engineering, lang: en, weight: 0.9, url: "https://blog.pragmaticengineer.com/rss/"}
+  - {name: GitHub Engineering, category: engineering, lang: en, weight: 0.9, url: "https://github.blog/engineering/feed/"}
+  - {name: Martin Fowler, category: engineering, lang: en, weight: 0.9, url: "https://martinfowler.com/feed.atom"}
+  - {name: The New Stack, category: engineering, lang: en, weight: 0.8, url: "https://thenewstack.io/feed/"}
+  # Aggregator: links to arbitrary blogs, high volume. Lower weight so it doesn't crowd out the others
+  - {name: Lobsters, category: engineering, lang: en, weight: 0.7, url: "https://lobste.rs/rss"}
 
   # Natural Science & Engineering
   - {name: Nature News, category: science, lang: en, weight: 1.0, url: "https://www.nature.com/nature.rss"}
   - {name: Quanta Magazine, category: science, lang: en, weight: 0.9, url: "https://www.quantamagazine.org/feed/"}
   - {name: Phys.org, category: science, lang: en, weight: 0.9, url: "https://phys.org/rss-feed/"}
-  - {name: Tech Xplore, category: engineering, lang: en, weight: 0.9, url: "https://techxplore.com/rss-feed/"}
+  - {name: Tech Xplore, category: science, lang: en, weight: 0.9, url: "https://techxplore.com/rss-feed/"}
