@@ -36,7 +36,7 @@ GitHub Actions runs the digest, [Neon](https://neon.com) holds the database, and
 
 ## Stack
 
-Python · PostgreSQL (Neon) · Docker · GitHub Actions · Cloudflare Workers · Gmail SMTP · Gemini AI
+Python · PostgreSQL (Neon) · Docker · GitHub Actions · Cloudflare Workers · Gmail SMTP · Gemini
 
 ## Roadmap
 
