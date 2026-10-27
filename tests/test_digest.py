@@ -2,8 +2,8 @@ from datetime import datetime
 
 import pytest
 
-from app.digest import Section, build_headlines, build_summary_digest, slot_label
-from app.llm import Story
+from app.digest import Lead, Section, build_headlines, build_summary_digest, slot_label
+from app.llm import Curiosity, Story
 
 TZ = "Africa/Casablanca"
 
@@ -36,7 +36,7 @@ def test_section_modes():
 
 def test_summary_digest_content():
     d = build_summary_digest([Section("geo", "Geopolitics", stories=[story(), story("Other", single=True)])], TZ)
-    assert "2 stories" in d.subject
+    assert d.subject.startswith("🗞 Rates rise · ") and "2 stories" in d.html
     assert "Geopolitics" in d.html and "Rates rise" in d.html
     assert 'href="https://bbc.test/1"' in d.html and 'href="https://dw.test/2"' in d.html
     assert d.html.count("single source") == 1
@@ -116,7 +116,7 @@ def test_update_earlier_line_is_escaped():
 def test_repeats_are_not_shown_but_recorded_in_payload():
     d = build_summary_digest([Section("geo", "Geo", stories=[story()], dropped=[repeat_story()])], TZ)
     assert "Rates still held" not in d.html and "Rates still held" not in d.text
-    assert "1 stories" in d.subject
+    assert "1 stories" in d.html
     assert d.payload["sections"][0]["dropped"] == [{"title": "Rates still held", "repeat_of": "Rates held"}]
 
 
@@ -136,3 +136,59 @@ def test_build_headlines_follows_category_order_and_skips_empty():
     assert "https://h.test/3" not in d.html      # undeclared category is not shown
     assert "headlines only" not in d.html
     assert "2 stories" in d.subject
+
+
+# --------------------------------------------------------------------------- front page
+def lead(title="Truce agreed") -> Lead:
+    return Lead(key="geo", label="Geopolitics", story=story(title), why_it_matters="Fighting may stop.")
+
+
+CURIO = Curiosity(title="War on emus", text="Australia once fought emus.", topic="Emu War")
+
+
+def test_lead_is_shown_first_and_used_as_subject():
+    d = build_summary_digest([Section("eco", "Economy", stories=[story()])], TZ, lead=lead())
+    assert d.subject.startswith("🗞 Truce agreed · ")
+    assert d.html.index("TOP STORY · GEOPOLITICS") < d.html.index("Economy")
+    assert "Why it matters:</b> Fighting may stop." in d.html and "2 stories" in d.html
+    assert "TOP STORY" in d.text and "Why it matters: Fighting may stop." in d.text
+
+
+def test_lead_alone_is_not_nothing_new():
+    d = build_summary_digest([], TZ, lead=lead())
+    assert "Nothing new" not in d.html and d.subject.startswith("🗞 Truce agreed")
+
+
+def test_subject_without_lead_uses_first_story():
+    d = build_summary_digest([Section("geo", "Geo", stories=[story("First"), story("Second")])], TZ)
+    assert d.subject.startswith("🗞 First · ")
+
+
+def test_subject_headlines_only_keeps_count_format():
+    d = build_summary_digest([Section("tech", "Tech", headlines=[headline(1)])], TZ)
+    assert "1 stories" in d.subject
+
+
+def test_preview_text_lists_next_sections_and_skips_the_subject_story():
+    secs = [Section(k, k, stories=[story(f"{k} top"), story(f"{k} second")]) for k in ("A", "B", "C", "D")]
+    d = build_summary_digest(secs, TZ)
+    teaser = d.html.split("</div>", 1)[0]
+    assert "display:none" in teaser
+    assert "B top · C top · D top" in teaser        # "A top" is already the subject
+    assert "second" not in teaser
+
+
+def test_curiosity_at_the_end_with_built_link():
+    d = build_summary_digest([Section("geo", "Geo", stories=[story()])], TZ, curiosity=CURIO)
+    assert d.html.index("DID YOU KNOW?") > d.html.index("Rates rise")
+    assert 'href="https://en.wikipedia.org/w/index.php?search=Emu+War"' in d.html
+    assert "not from today's news" in d.html
+    assert "Learn more: https://en.wikipedia.org/w/index.php?search=Emu+War" in d.text
+
+
+def test_payload_records_lead_and_curiosity():
+    d = build_summary_digest([Section("eco", "Economy", stories=[story()])], TZ, lead=lead(), curiosity=CURIO)
+    assert d.payload["lead"]["title"] == "Truce agreed"
+    assert d.payload["lead"]["category"] == "geo" and d.payload["lead"]["why_it_matters"] == "Fighting may stop."
+    assert d.payload["curiosity"]["url"].endswith("Emu+War")
+    assert "lead" not in build_summary_digest([], TZ).payload

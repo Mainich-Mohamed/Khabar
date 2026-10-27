@@ -5,11 +5,11 @@ from datetime import datetime, timezone
 
 from app import db
 from app.config import Settings, SourcesConfig, load_sources
-from app.digest import Digest, Section, build_summary_digest
+from app.digest import Digest, Lead, Section, build_summary_digest
 from app.emailer import Emailer
 from app.extract import extract_leads
 from app.ingest import ingest_all
-from app.llm import LLMError, QuotaExhausted, Summarizer, Usage, make_summarizer
+from app.llm import Curiosity, LLMError, QuotaExhausted, Summarizer, Usage, make_summarizer
 
 log = logging.getLogger(__name__)
 
@@ -22,6 +22,7 @@ class Prepared:
     new_articles: int
     errors: list[str]
     previous: dict[str, list[dict]] = field(default_factory=dict)   # category -> stories sent recently
+    curiosities: list[str] = field(default_factory=list)            # recent "Did you know?" titles
 
 
 @dataclass
@@ -58,7 +59,8 @@ def prepare(conn, s: Settings, cap: int) -> Prepared:
     candidates = {k: rank(v, cfg)[:cap] for k, v in by_cat.items()}
     extract_leads(conn, [a for v in candidates.values() for a in v], db.save_lead)
     previous = db.fetch_recent_stories(conn, s.update_lookback_hours)
-    return Prepared(cfg, unsent, candidates, new, errors, previous)
+    curiosities = db.fetch_recent_curiosities(conn)
+    return Prepared(cfg, unsent, candidates, new, errors, previous, curiosities)
 
 
 def summarize_sections(summarizer: Summarizer | None, p: Prepared, s: Settings,
@@ -91,6 +93,34 @@ def summarize_sections(summarizer: Summarizer | None, p: Prepared, s: Settings,
     return sections, usage, fallbacks
 
 
+def front_page(summarizer: Summarizer | None, sections: list[Section], recent_curiosities: list[str],
+               errors: list[str]) -> tuple[Lead | None, Curiosity | None, Usage]:
+    """Top story (moved out of its section) and the closing curiosity.
+    Either can be missing: the digest is sent without it"""
+    usage, lead, curiosity = Usage(), None, None
+    if summarizer is None:
+        return lead, curiosity, usage
+    candidates = [(sec, i) for sec in sections for i in range(len(sec.stories))]
+    if candidates:
+        try:
+            n, why, u = summarizer.pick_lead([(sec.label, sec.stories[i]) for sec, i in candidates])
+            usage.add(u)
+            sec, i = candidates[n]
+            lead = Lead(key=sec.key, label=sec.label, story=sec.stories.pop(i), why_it_matters=why)
+        except LLMError as exc:
+            errors.append(f"top story: {exc}")
+            log.warning("Picking the top story failed: %s", exc)
+            if isinstance(exc, QuotaExhausted):
+                return lead, curiosity, usage
+    try:
+        curiosity, u = summarizer.curiosity(recent_curiosities)
+        usage.add(u)
+    except LLMError as exc:
+        errors.append(f"curiosity: {exc}")
+        log.warning("Curiosity failed: %s", exc)
+    return lead, curiosity, usage
+
+
 def _summarizer_or_none(s: Settings) -> Summarizer | None:
     try:
         return make_summarizer(s)
@@ -112,7 +142,9 @@ def run_digest(s: Settings, send: bool = True) -> RunResult:
 
     errors = list(p.errors)
     sections, usage, fallbacks = summarize_sections(summarizer, p, s, errors)
-    digest = build_summary_digest(sections, s.timezone)
+    lead, curiosity, front_usage = front_page(summarizer, sections, p.curiosities, errors)
+    usage.add(front_usage)
+    digest = build_summary_digest(sections, s.timezone, lead=lead, curiosity=curiosity)
 
     # The first connection would sit idle for minutes during the LLM phase and Neon suspends the
     # compute after ~5 min idle, killing it. Reconnect before sending: if the DB is down we fail before the email

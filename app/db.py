@@ -88,11 +88,28 @@ def fetch_recent_stories(conn: psycopg.Connection, hours: int = 48) -> dict[str,
     ).fetchall()
     by_cat: dict[str, list[dict]] = {}
     for row in rows:
+        lead = row["payload"].get("lead")
+        if lead:   # the top story is stored outside its section
+            by_cat.setdefault(lead["category"], []).append(
+                {"title": lead["title"], "summary": lead.get("summary")})
         for sec in row["payload"].get("sections", []):
             for st in sec.get("stories", []):
                 by_cat.setdefault(sec["category"], []).append(
                     {"title": st["title"], "summary": st.get("summary")})
     return by_cat
+
+
+def fetch_recent_curiosities(conn: psycopg.Connection, days: int = 14) -> list[str]:
+    """Titles of recent "Did you know?" items, newest first, so the model doesn't repeat itself"""
+    rows = conn.execute(
+        """
+        SELECT payload->'curiosity'->>'title' AS title FROM digests
+        WHERE kind = 'summary' AND created_at > now() - make_interval(days => %s)
+        ORDER BY created_at DESC
+        """,
+        (days,),
+    ).fetchall()
+    return [r["title"] for r in rows if r["title"]]
 
 
 def save_lead(conn: psycopg.Connection, article_id: int, lead: str | None, status: str) -> None:

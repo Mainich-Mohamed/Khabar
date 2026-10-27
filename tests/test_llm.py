@@ -4,9 +4,9 @@ import httpx
 import pytest
 
 from app import llm
-from app.llm import (GeminiClient, LLMError, QuotaExhausted, Summarizer, Usage, _retry_delay,
-                     _to_gemini_schema, format_articles, format_previous, make_summarizer, parse_json_text,
-                     parse_stories)
+from app.llm import (GeminiClient, LLMError, QuotaExhausted, Story, Summarizer, Usage, _retry_delay,
+                     _to_gemini_schema, format_articles, format_candidates, format_previous, make_summarizer,
+                     parse_json_text, parse_stories)
 
 
 # --------------------------------------------------------------------------- format_articles
@@ -201,6 +201,8 @@ def test_gemini_success_sends_expected_request(mock_client):
     assert seen["body"]["systemInstruction"]["parts"][0]["text"] == "SYS"
     assert seen["body"]["contents"][0]["parts"][0]["text"] == "PROMPT"
     assert seen["body"]["generationConfig"]["responseSchema"]["type"] == "OBJECT"
+    assert seen["body"]["generationConfig"]["responseMimeType"] == "application/json"
+    assert seen["body"]["generationConfig"]["temperature"] == 0.2
 
 
 def test_gemini_daily_quota_raises_immediately(mock_client):
@@ -297,10 +299,11 @@ class FakeClient:
     model = "fake-model"
 
     def __init__(self, data):
-        self.data, self.calls = data, []
+        self.data, self.calls, self.kwargs = data, [], {}
 
-    def generate(self, system, prompt):
+    def generate(self, system, prompt, **kw):
         self.calls.append((system, prompt))
+        self.kwargs = kw
         if isinstance(self.data, Exception):
             raise self.data
         return self.data, Usage(10, 5)
@@ -373,3 +376,66 @@ def test_make_summarizer_uses_settings(settings):
     z = make_summarizer(settings)
     assert z.label == "gemini:gemini-test"
     assert (z.max_stories, z.max_input, z.language) == (6, 25, "English")
+
+
+# --------------------------------------------------------------------------- front page
+def candidates():
+    return [("Geopolitics", Story("Truce agreed", "Both sides agreed.", [], True)),
+            ("Economy", Story("Rates rise", "The bank raised rates.", [], True))]
+
+
+def test_format_candidates_numbers_from_one():
+    out = format_candidates(candidates())
+    assert out.startswith("[1] Category: Geopolitics\nTitle: Truce agreed")
+    assert "[2] Category: Economy" in out
+
+
+def test_pick_lead_returns_index_and_reason():
+    client = FakeClient({"story": 2, "why_it_matters": "Loans get dearer."})
+    i, why, _ = summarizer(client).pick_lead(candidates())
+    assert (i, why) == (1, "Loans get dearer.")
+    assert "in French" in client.calls[0][0] and "[2] Category: Economy" in client.calls[0][1]
+    assert client.kwargs["schema"] is llm.LEAD_SCHEMA
+
+
+@pytest.mark.parametrize("data", [
+    {"story": 3, "why_it_matters": "x"},     # hallucinated story number
+    {"story": 0, "why_it_matters": "x"},
+    {"story": 1, "why_it_matters": " "},
+    {"why_it_matters": "x"},
+    {},
+])
+def test_pick_lead_rejects_invalid_answers(data):
+    with pytest.raises(LLMError, match="no valid lead"):
+        summarizer(FakeClient(data)).pick_lead(candidates())
+
+
+def test_curiosity_builds_item_and_link():
+    client = FakeClient({"title": "War on emus", "text": "Australia once fought emus.", "topic": "Emu War"})
+    c, _ = summarizer(client).curiosity(["Honey never spoils"])
+    assert c.url == "https://en.wikipedia.org/w/index.php?search=Emu+War"
+    assert "- Honey never spoils" in client.calls[0][1]
+    assert client.kwargs == {"schema": llm.CURIOSITY_SCHEMA, "temperature": 0.7}
+
+
+def test_curiosity_without_history_sends_no_list():
+    client = FakeClient({"title": "T", "text": "X", "topic": "Y"})
+    summarizer(client).curiosity([])
+    assert "Previous items" not in client.calls[0][1]
+
+
+def test_curiosity_incomplete_raises():
+    with pytest.raises(LLMError, match="incomplete"):
+        summarizer(FakeClient({"title": "T", "text": "", "topic": "Y"})).curiosity([])
+
+
+def test_gemini_uses_given_schema_and_temperature(mock_client):
+    seen = {}
+
+    def handler(req):
+        seen["body"] = json.loads(req.content)
+        return ok_response({"title": "T"})
+
+    gemini(mock_client, handler).generate("s", "p", schema=llm.CURIOSITY_SCHEMA, temperature=0.7)
+    cfg = seen["body"]["generationConfig"]
+    assert cfg["temperature"] == 0.7 and "topic" in cfg["responseSchema"]["properties"]

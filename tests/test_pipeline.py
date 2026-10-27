@@ -3,8 +3,9 @@ from types import SimpleNamespace
 import pytest
 
 from app import pipeline
-from app.llm import LLMError, QuotaExhausted, Story, Usage
-from app.pipeline import Prepared, rank, run_digest, summarize_sections
+from app.digest import Section
+from app.llm import Curiosity, LLMError, QuotaExhausted, Story, Usage
+from app.pipeline import Prepared, front_page, rank, run_digest, summarize_sections
 
 
 # --------------------------------------------------------------------------- rank
@@ -34,6 +35,8 @@ def test_rank_unknown_source_uses_default_weight(sources_cfg, article):
 class FakeSummarizer:
     max_input = 25
     label = "fake"
+    lead = 0          # index returned by pick_lead, or an exception to raise
+    curio = None      # an exception to raise from curiosity()
 
     def __init__(self, behaviour: dict):
         self.behaviour, self.calls, self.previous = behaviour, [], {}
@@ -47,6 +50,18 @@ class FakeSummarizer:
         if isinstance(result, list):      # explicit stories, e.g. with statuses
             return result, Usage(10, 2)
         return [Story(title=f"{label} story", summary="s", sources=[], single_source=True)], Usage(10, 2)
+
+    def pick_lead(self, candidates):
+        self.calls.append("lead")
+        if isinstance(self.lead, Exception):
+            raise self.lead
+        return self.lead, "why", Usage(1, 1)
+
+    def curiosity(self, previous):
+        self.calls.append("curiosity")
+        if isinstance(self.curio, Exception):
+            raise self.curio
+        return Curiosity("Fact", "Text", "Topic"), Usage(1, 1)
 
 
 def prepared(sources_cfg, article, cats=("geopolitics", "tech")) -> Prepared:
@@ -125,6 +140,59 @@ def test_summarize_sections_moves_repeats_to_dropped(sources_cfg, article, setti
     assert not tech.is_fallback and fallbacks == []      # all repeats is not an LLM failure
 
 
+# --------------------------------------------------------------------------- front_page
+def two_sections():
+    return [Section("geopolitics", "Geopolitics", stories=[status_story("G1"), status_story("G2")]),
+            Section("tech", "Tech & AI", stories=[status_story("T1")])]
+
+
+def test_front_page_moves_the_lead_out_of_its_section():
+    z = FakeSummarizer({})
+    z.lead = 2                                  # third candidate: the tech story
+    secs, errors = two_sections(), []
+    lead, curio, usage = front_page(z, secs, ["Old fact"], errors)
+    assert (lead.story.title, lead.key, lead.why_it_matters) == ("T1", "tech", "why")
+    assert secs[1].stories == [] and [s.title for s in secs[0].stories] == ["G1", "G2"]
+    assert curio.title == "Fact" and errors == [] and usage.input_tokens == 2
+
+
+def test_front_page_lead_failure_still_gets_curiosity():
+    z = FakeSummarizer({})
+    z.lead = LLMError("bad answer")
+    secs, errors = two_sections(), []
+    lead, curio, _ = front_page(z, secs, [], errors)
+    assert lead is None and curio is not None
+    assert [s.title for s in secs[0].stories] == ["G1", "G2"]    # nothing removed
+    assert errors == ["top story: bad answer"]
+
+
+def test_front_page_quota_skips_the_curiosity():
+    z = FakeSummarizer({})
+    z.lead = QuotaExhausted("daily quota")
+    lead, curio, _ = front_page(z, two_sections(), [], [])
+    assert (lead, curio) == (None, None) and "curiosity" not in z.calls
+
+
+def test_front_page_curiosity_failure_is_recorded():
+    z = FakeSummarizer({})
+    z.curio = LLMError("incomplete")
+    errors = []
+    lead, curio, _ = front_page(z, two_sections(), [], errors)
+    assert lead is not None and curio is None
+    assert errors == ["curiosity: incomplete"]
+
+
+def test_front_page_without_stories_skips_the_lead(article):
+    z = FakeSummarizer({})
+    lead, curio, _ = front_page(z, [Section("tech", "Tech", headlines=[article(1)])], [], [])
+    assert lead is None and curio is not None and z.calls == ["curiosity"]
+
+
+def test_front_page_without_summarizer():
+    lead, curio, usage = front_page(None, two_sections(), [], [])
+    assert (lead, curio, usage.input_tokens) == (None, None, 0)
+
+
 # --------------------------------------------------------------------------- prepare (sources/ingest/DB faked)
 def test_prepare_loads_history_with_lookback(monkeypatch, sources_cfg, article, settings):
     seen = {}
@@ -138,10 +206,12 @@ def test_prepare_loads_history_with_lookback(monkeypatch, sources_cfg, article, 
     monkeypatch.setattr(pipeline, "extract_leads", lambda conn, arts, save: None)
     monkeypatch.setattr(pipeline, "db", SimpleNamespace(
         insert_article=None, save_lead=None, fetch_recent_stories=fetch_recent_stories,
+        fetch_recent_curiosities=lambda conn: ["Old fact"],
         fetch_all_unsent=lambda conn: [article(1, category="tech")]))
     p = pipeline.prepare(None, settings, cap=5)
     assert seen["hours"] == 48
     assert p.previous == {"tech": [{"title": "Old", "summary": None}]}
+    assert p.curiosities == ["Old fact"]
 
 
 # --------------------------------------------------------------------------- run_digest (DB/email/LLM faked)
