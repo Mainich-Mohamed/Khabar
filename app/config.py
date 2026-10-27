@@ -50,7 +50,7 @@ def get_settings() -> Settings:
         timezone=env("TIMEZONE", "Africa/Casablanca"),
         digest_language=env("DIGEST_LANGUAGE", "English"),
         digest_hours=_hours(env("DIGEST_HOURS", "7,16,22")),
-        max_stories_per_category=int(env("MAX_STORIES_PER_CATEGORY", "6")),
+        max_stories_per_category=int(env("MAX_STORIES_PER_CATEGORY", "4")),
         gemini_api_key=env("GEMINI_API_KEY"),
         gemini_model=env("GEMINI_MODEL", "gemini-3.5-flash-lite"),
         gemini_max_input=int(env("GEMINI_MAX_INPUT", "25")),

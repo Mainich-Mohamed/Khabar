@@ -46,6 +46,7 @@ def test_settings_defaults(clean_env):
     assert s.gemini_api_key == ""
     assert s.gemini_interval == 7.0
     assert s.update_lookback_hours == 48
+    assert s.max_stories_per_category == 4
 
 
 def test_settings_parses_env(clean_env):
