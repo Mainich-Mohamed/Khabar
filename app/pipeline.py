@@ -109,10 +109,14 @@ def run_digest(s: Settings, send: bool = True) -> RunResult:
         db.ensure_schema(conn)
         run_id = db.start_run(conn, "summary" if send else "preview")
         p = prepare(conn, s, cap)
-        errors = list(p.errors)
-        sections, usage, fallbacks = summarize_sections(summarizer, p, s, errors)
-        digest = build_summary_digest(sections, s.timezone)
 
+    errors = list(p.errors)
+    sections, usage, fallbacks = summarize_sections(summarizer, p, s, errors)
+    digest = build_summary_digest(sections, s.timezone)
+
+    # The first connection would sit idle for minutes during the LLM phase and Neon suspends the
+    # compute after ~5 min idle, killing it. Reconnect before sending: if the DB is down we fail before the email
+    with db.connect(s.database_url) as conn:
         if send:
             emailer.send(digest.subject, digest.html, digest.text)
             db.save_digest(conn, "summary", digest.subject, digest.payload,

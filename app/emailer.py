@@ -30,7 +30,8 @@ class Emailer:
                     smtp.starttls()
                     smtp.login(self.user, self.password)
                     smtp.send_message(msg)
-                log.info("Email sent to %s: %s", msg["To"], subject)
+                # Count only: Actions logs of this public repo are readable, addresses must not appear
+                log.info("Email sent to %d recipient(s): %s", len(self.to), subject)
                 return
             except smtplib.SMTPAuthenticationError as exc:
                 # Retrying won't fix bad credentials

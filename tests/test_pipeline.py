@@ -186,6 +186,28 @@ def test_run_digest_send(wired):
     assert r.errors == ["Feed X: down"]
 
 
+def test_run_digest_uses_a_fresh_connection_for_the_writes(wired):
+    connects = []
+    wired.db.connect = lambda url: connects.append(url) or FakeConn()
+    run_digest(wired.settings, send=True)
+    assert len(connects) == 2          # one for prepare, one for send + writes
+
+
+def test_run_digest_fails_before_sending_when_reconnect_fails(wired):
+    attempts = []
+
+    def connect(url):
+        attempts.append(url)
+        if len(attempts) == 2:
+            raise RuntimeError("neon down")
+        return FakeConn()
+
+    wired.db.connect = connect
+    with pytest.raises(RuntimeError):
+        run_digest(wired.settings, send=True)
+    assert wired.sent == []            # no email if the DB is unreachable
+
+
 def test_run_digest_preview_sends_and_marks_nothing(wired):
     r = run_digest(wired.settings, send=False)
     assert wired.sent == []
