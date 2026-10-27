@@ -152,6 +152,24 @@ def test_fetch_recent_stories_ignores_other_kinds(conn):
     save(conn, section("tech", "Raw"), kind="headlines")
     assert db.fetch_recent_stories(conn) == {}
 
+
+def test_fetch_recent_stories_includes_the_lead(conn):
+    payload = {"lead": {"category": "geo", "title": "Top", "summary": "Top summary"},
+               "sections": [section("geo", "Other")]}
+    db.save_digest(conn, "summary", "Subject", payload, None, 0, 0, [])
+    assert db.fetch_recent_stories(conn) == {"geo": [{"title": "Top", "summary": "Top summary"},
+                                                     {"title": "Other", "summary": "Other summary"}]}
+
+
+def test_fetch_recent_curiosities_newest_first_within_window(conn):
+    for title, days in [("Old", 20), ("Mid", 3), ("New", 0)]:
+        digest_id = db.save_digest(conn, "summary", "S", {"sections": [], "curiosity": {"title": title}},
+                                   None, 0, 0, [])
+        conn.execute("UPDATE digests SET created_at = now() - make_interval(days => %s) WHERE id = %s",
+                     (days, digest_id))
+    db.save_digest(conn, "summary", "S", {"sections": []}, None, 0, 0, [])     # no curiosity: ignored
+    assert db.fetch_recent_curiosities(conn) == ["New", "Mid"]
+
 # --------------------------------------------------------------------------- mark_sent
 @pytest.mark.parametrize("fetch", FETCHERS)
 def test_mark_sent_hides_only_marked_articles(conn, fetch):

@@ -8,6 +8,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
+from urllib.parse import quote_plus
 
 import httpx
 
@@ -68,6 +69,45 @@ STORIES_SCHEMA = {
     "required": ["stories"],
 }
 
+EDITOR_PROMPT = """You are the front-page editor of a concise personal news brief.
+
+You receive numbered stories, already selected and summarized, from several categories.
+Pick the ONE story that matters most to the reader today: real-world impact first, then novelty.
+Then write ONE sentence on why it matters.
+
+Strict rules:
+- Use ONLY facts stated in the provided stories. Never add outside knowledge, numbers, or quotes.
+- Write the sentence in {language}."""
+
+LEAD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "story": {"type": "integer", "description": "Number of the most important story."},
+        "why_it_matters": {"type": "string", "description": "One sentence: why this story matters."},
+    },
+    "required": ["story", "why_it_matters"],
+}
+
+CURIOSITY_PROMPT = """You write the closing "Did you know?" item of a personal news brief.
+Its job is to make the reader smile or think: a surprising, funny or insightful fact on ANY subject
+(science, history, economics, technology, nature, language, culture...). It does not need to relate to the news.
+
+Strict rules:
+- Only well-established, widely documented facts. If you are not certain a fact is true, pick another one.
+- No exact numbers, dates or quotes unless they are famous and well documented.
+- Do not repeat or closely resemble any of the previous items you are given.
+- Write the title and text in {language}. topic is the title of the English Wikipedia article that covers the fact."""
+
+CURIOSITY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string", "description": "Short catchy title, max 10 words."},
+        "text": {"type": "string", "description": "2-3 sentences."},
+        "topic": {"type": "string", "description": "English Wikipedia article title for the fact."},
+    },
+    "required": ["title", "text", "topic"],
+}
+
 
 class LLMError(RuntimeError):
     """Any provider failure. The summarizer moves on to the next provider, then to headlines"""
@@ -103,6 +143,20 @@ class Story:
                 "status": self.status, "previous_title": self.previous_title}
 
 
+@dataclass
+class Curiosity:
+    title: str
+    text: str
+    topic: str     # Wikipedia article title: we build the link, the model never writes one
+
+    @property
+    def url(self) -> str:
+        return "https://en.wikipedia.org/w/index.php?search=" + quote_plus(self.topic)
+
+    def to_dict(self) -> dict:
+        return {"title": self.title, "text": self.text, "topic": self.topic, "url": self.url}
+
+
 # --------------------------------------------------------------------------- helpers
 def format_articles(articles: list[dict], lead_chars: int = 900) -> str:
     blocks = []
@@ -119,6 +173,12 @@ def format_articles(articles: list[dict], lead_chars: int = 900) -> str:
 def format_previous(previous: list[dict]) -> str:
     return "\n".join(f"P{i}. {p['title']}" + (f" | {p['summary']}" if p.get("summary") else "")
                      for i, p in enumerate(previous, start=1))
+
+
+def format_candidates(candidates: list[tuple[str, Story]]) -> str:
+    """Stories already summarized, numbered from 1, for the front-page editor"""
+    return "\n\n".join(f"[{i}] Category: {label}\nTitle: {st.title}\nSummary: {st.summary}"
+                       for i, (label, st) in enumerate(candidates, start=1))
 
 
 def parse_json_text(text: str) -> dict:
@@ -218,16 +278,17 @@ class GeminiClient:
         self.client = client or httpx.Client(timeout=120)
         self.headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
 
-    def generate(self, system: str, prompt: str) -> tuple[dict, Usage]:
+    def generate(self, system: str, prompt: str, schema: dict = STORIES_SCHEMA,
+                 temperature: float = 0.2) -> tuple[dict, Usage]:
         body = {
             "systemInstruction": {"parts": [{"text": system}]},
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {
-                "temperature": 0.2,
+                "temperature": temperature,
                 # Headroom on purpose: "thinking" models spend output tokens on reasoning too
                 "maxOutputTokens": 8192,
                 "responseMimeType": "application/json",
-                "responseSchema": _to_gemini_schema(STORIES_SCHEMA),
+                "responseSchema": _to_gemini_schema(schema),
             },
         }
         url = self.URL.format(model=self.model)
@@ -305,6 +366,13 @@ class Summarizer:
             if wait > 0:
                 time.sleep(wait)   # stay under the free tier's per-minute limit
 
+    def _call(self, system: str, prompt: str, **kw) -> tuple[dict, Usage]:
+        self._wait_turn()
+        try:
+            return self.client.generate(system, prompt, **kw)
+        finally:
+            self._last_call = time.monotonic()
+
     def summarize(self, category_label: str, articles: list[dict],
                   previous: list[dict] | None = None) -> tuple[list[Story], Usage]:
         system = SYSTEM_PROMPT.format(language=self.language)
@@ -319,11 +387,7 @@ class Summarizer:
         ])
         if previous:
             prompt += "\n\nPreviously sent stories:\n\n" + format_previous(previous)
-        self._wait_turn()
-        try:
-            data, usage = self.client.generate(system, prompt)
-        finally:
-            self._last_call = time.monotonic()
+        data, usage = self._call(system, prompt)
         stories = parse_stories(data.get("stories", []), batch, self.max_stories, previous)
         if not stories:
             raise LLMError("model returned no valid stories")
@@ -333,6 +397,32 @@ class Summarizer:
                  category_label, len(batch), len(stories), updates, repeats,
                  usage.input_tokens, usage.output_tokens, self.label)
         return stories, usage
+
+    def pick_lead(self, candidates: list[tuple[str, Story]]) -> tuple[int, str, Usage]:
+        """Index (0-based) of the most important story across categories, and why it matters"""
+        system = EDITOR_PROMPT.format(language=self.language)
+        data, usage = self._call(system, "Stories:\n\n" + format_candidates(candidates), schema=LEAD_SCHEMA)
+        n = _valid_number(data.get("story"), len(candidates))
+        why = str(data.get("why_it_matters", "")).strip()
+        if n is None or not why:
+            raise LLMError(f"editor returned no valid lead: {str(data)[:200]}")
+        log.info("Top story: %r (%d in / %d out tokens)", candidates[n - 1][1].title,
+                 usage.input_tokens, usage.output_tokens)
+        return n - 1, why, usage
+
+    def curiosity(self, previous_titles: list[str]) -> tuple[Curiosity, Usage]:
+        """A general-knowledge "Did you know?" item, different from the recent ones"""
+        system = CURIOSITY_PROMPT.format(language=self.language)
+        prompt = "Write today's item."
+        if previous_titles:
+            prompt += "\n\nPrevious items (do not repeat):\n" + "\n".join(f"- {t}" for t in previous_titles)
+        # A little more randomness than the news calls, for variety from one email to the next
+        data, usage = self._call(system, prompt, schema=CURIOSITY_SCHEMA, temperature=0.7)
+        title, text, topic = (str(data.get(k, "")).strip() for k in ("title", "text", "topic"))
+        if not (title and text and topic):
+            raise LLMError("curiosity call returned an incomplete item")
+        log.info("Curiosity: %r (%d in / %d out tokens)", title, usage.input_tokens, usage.output_tokens)
+        return Curiosity(title, text, topic), usage
 
 
 def make_summarizer(s: Settings) -> Summarizer:
