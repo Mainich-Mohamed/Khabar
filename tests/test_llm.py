@@ -338,6 +338,35 @@ def test_summarizer_voice_changes_style_only(article):
         assert "Use ONLY facts stated in the provided articles" in system   # fact rules untouched
 
 
+def test_highlights_builds_cross_category_prompt(article):
+    client = FakeClient({"stories": [{"title": "T", "summary": "S", "article_ids": [2]}]})
+    stories, _ = summarizer(client, voice="lively").highlights([article(1), article(2), article(3)])
+    system, prompt = client.calls[0]
+    assert "ALL categories" in system and "never on deaths" in system
+    assert "Use ONLY facts stated in the provided articles" in system
+    assert "at most 5 stories, or none" in prompt and "[3]" in prompt      # no max_input cap
+    assert "Previously sent" not in prompt
+    assert stories[0].article_ids == [2]
+
+
+def test_highlights_empty_list_is_not_an_error(article):
+    stories, _ = summarizer(FakeClient({"stories": []})).highlights([article(1)])
+    assert stories == []
+
+
+def test_highlights_missing_story_list_raises(article):
+    with pytest.raises(LLMError, match="no story list"):
+        summarizer(FakeClient({})).highlights([article(1)])
+
+
+def test_highlights_caps_and_sends_history(article):
+    raw = [{"title": f"T{i}", "summary": "S", "article_ids": [1]} for i in range(4)]
+    client = FakeClient({"stories": raw})
+    stories, _ = summarizer(client).highlights([article(1)], PREVIOUS, max_stories=2)
+    assert [st.title for st in stories] == ["T0", "T1"]
+    assert "P1. Ceasefire agreed" in client.calls[0][1]
+
+
 def test_summarizer_no_valid_stories_raises(article):
     client = FakeClient({"stories": [{"title": "T", "summary": "S", "article_ids": [99]}]})
     with pytest.raises(LLMError, match="no valid stories"):
