@@ -22,7 +22,7 @@ You receive numbered news articles from ONE category. Your job:
 1. Group articles that cover the same event into ONE story (different outlets, same news = one story).
 2. Select the most important stories: real-world impact first, then novelty. Skip minor, promotional,
    opinion-only, or duplicate items.
-3. For each story write a neutral headline and a 2-3 sentence summary: what happened, then why it matters.
+{style}
 
 Strict rules:
 - Use ONLY facts stated in the provided articles. Never add outside knowledge, numbers, or quotes.
@@ -41,6 +41,18 @@ You may also receive stories already emailed to the reader, numbered P1, P2, ...
 Use "repeat" only when you are certain nothing new was reported. If you are unsure, use "update".
 If no previously sent stories are given, every story is "new"."""
 
+# Rule 3 of SYSTEM_PROMPT, chosen by DIGEST_VOICE. "plain" is the original wording, kept to switch back
+VOICES = {
+    "plain": "3. For each story write a neutral headline and a 2-3 sentence summary: what happened, then why it matters.",
+    "lively": """3. For each story write a headline and a 2-3 sentence summary, like a sharp, warm newsletter writer:
+   - Headline: concrete and vivid, built on the most striking fact, with an active verb.
+     No clickbait, no questions, no exclamation marks.
+   - First sentence: the news itself, plain and direct. Then why it matters to the reader, in everyday words.
+   - Prefer short sentences and concrete details from the articles (numbers, names, places) over abstractions.
+   - A light touch of wit is welcome when the story allows it; never on deaths, disasters, violence or tragedy.
+   - Avoid filler and cliches such as "amid", "in a move", "sparking concerns", "highlights the ongoing".""",
+}
+
 # Standard JSON Schema; converted to Gemini's OpenAPI-style dialect before sending
 STORIES_SCHEMA = {
     "type": "object",
@@ -50,7 +62,7 @@ STORIES_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "title": {"type": "string", "description": "Neutral, factual headline, max 14 words."},
+                    "title": {"type": "string", "description": "Headline, max 14 words."},
                     "summary": {"type": "string", "description": "2-3 sentences: what happened, then why it matters."},
                     "article_ids": {
                         "type": "array",
@@ -351,9 +363,10 @@ class Summarizer:
     when the daily free quota is gone) so the pipeline can fall back to plain headlines"""
 
     def __init__(self, client: GeminiClient, language: str, max_stories: int,
-                 max_input: int, lead_chars: int, interval: float):
+                 max_input: int, lead_chars: int, interval: float, voice: str):
         self.client, self.language, self.max_stories = client, language, max_stories
         self.max_input, self.lead_chars, self.interval = max_input, lead_chars, interval
+        self.voice = voice
         self._last_call: float | None = None
 
     @property
@@ -375,7 +388,7 @@ class Summarizer:
 
     def summarize(self, category_label: str, articles: list[dict],
                   previous: list[dict] | None = None) -> tuple[list[Story], Usage]:
-        system = SYSTEM_PROMPT.format(language=self.language)
+        system = SYSTEM_PROMPT.format(language=self.language, style=VOICES[self.voice])
         batch = articles[: self.max_input]
         prompt = "\n".join([
             f"Category: {category_label}",
@@ -393,9 +406,9 @@ class Summarizer:
             raise LLMError("model returned no valid stories")
         updates = sum(st.status == "update" for st in stories)
         repeats = sum(st.status == "repeat" for st in stories)
-        log.info("%-24s %2d articles -> %d stories, updates=%d repeats=%d (%d in / %d out tokens) [%s]",
+        log.info("%-24s %2d articles -> %d stories, updates=%d repeats=%d (%d in / %d out tokens) [%s, %s]",
                  category_label, len(batch), len(stories), updates, repeats,
-                 usage.input_tokens, usage.output_tokens, self.label)
+                 usage.input_tokens, usage.output_tokens, self.label, self.voice)
         return stories, usage
 
     def pick_lead(self, candidates: list[tuple[str, Story]]) -> tuple[int, str, Usage]:
@@ -428,4 +441,4 @@ class Summarizer:
 def make_summarizer(s: Settings) -> Summarizer:
     client = GeminiClient(s.gemini_api_key, s.gemini_model)
     return Summarizer(client, s.digest_language, s.max_stories_per_category,
-                      s.gemini_max_input, s.gemini_lead_chars, s.gemini_interval)
+                      s.gemini_max_input, s.gemini_lead_chars, s.gemini_interval, s.digest_voice)

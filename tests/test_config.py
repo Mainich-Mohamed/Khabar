@@ -4,7 +4,7 @@ from app.config import _hours, get_settings, load_sources
 
 ENV_KEYS = ["DATABASE_URL", "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "EMAIL_TO",
             "SOURCES_PATH", "MAX_PER_CATEGORY", "TIMEZONE", "DIGEST_LANGUAGE", "DIGEST_HOURS",
-            "MAX_STORIES_PER_CATEGORY", "GEMINI_API_KEY", "GEMINI_MODEL", "GEMINI_MAX_INPUT",
+            "DIGEST_VOICE", "MAX_STORIES_PER_CATEGORY", "GEMINI_API_KEY", "GEMINI_MODEL", "GEMINI_MAX_INPUT",
             "GEMINI_LEAD_CHARS", "GEMINI_INTERVAL", "UPDATE_LOOKBACK_HOURS"]
 
 
@@ -47,6 +47,15 @@ def test_settings_defaults(clean_env):
     assert s.gemini_interval == 7.0
     assert s.update_lookback_hours == 48
     assert s.max_stories_per_category == 4
+    assert s.digest_voice == "lively"
+
+
+def test_settings_voice_plain_and_invalid(clean_env):
+    clean_env.setenv("DIGEST_VOICE", "plain")
+    assert get_settings().digest_voice == "plain"
+    clean_env.setenv("DIGEST_VOICE", "loud")
+    with pytest.raises(ValueError, match="DIGEST_VOICE"):
+        get_settings()
 
 
 def test_settings_parses_env(clean_env):

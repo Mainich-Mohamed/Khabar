@@ -33,6 +33,7 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DIGEST_VOICE: ${{ vars.DIGEST_VOICE }}   # unset = lively; set the repo variable to "plain" to switch back
           PYTHONFAULTHANDLER: "1"   # on a native crash, print every thread's Python stack
         # Retry once only if the process was killed by a signal (exit >= 128, e.g. 134 = abort in lxml).
         # Python errors exit 1 and are not retried: they may happen after the email was sent

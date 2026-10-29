@@ -310,7 +310,7 @@ class FakeClient:
 
 
 def summarizer(client, **kw) -> Summarizer:
-    opts = dict(language="French", max_stories=3, max_input=2, lead_chars=900, interval=0)
+    opts = dict(language="French", max_stories=3, max_input=2, lead_chars=900, interval=0, voice="plain")
     opts.update(kw)
     return Summarizer(client, **opts)
 
@@ -326,6 +326,16 @@ def test_summarizer_builds_prompt_and_stories(article):
     assert "[2]" in prompt and "[3]" not in prompt          # capped at max_input
     assert stories[0].article_ids == [1, 2]
     assert (usage.input_tokens, usage.output_tokens) == (10, 5)
+
+
+def test_summarizer_voice_changes_style_only(article):
+    client = FakeClient({"stories": [{"title": "T", "summary": "S", "article_ids": [1]}]})
+    summarizer(client, voice="plain").summarize("X", [article(1)])
+    summarizer(client, voice="lively").summarize("X", [article(1)])
+    plain, lively = client.calls[0][0], client.calls[1][0]
+    assert "neutral headline" in plain and "never on deaths" in lively
+    for system in (plain, lively):
+        assert "Use ONLY facts stated in the provided articles" in system   # fact rules untouched
 
 
 def test_summarizer_no_valid_stories_raises(article):
