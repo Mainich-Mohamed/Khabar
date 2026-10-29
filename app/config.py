@@ -20,6 +20,7 @@ class Settings:
     timezone: str
     digest_language: str
     digest_hours: list[int]
+    digest_voice: str              # "lively" or "plain": style of the summaries
     max_stories_per_category: int
     gemini_api_key: str
     gemini_model: str
@@ -36,6 +37,12 @@ def _hours(raw: str) -> list[int]:
     return hours
 
 
+def _voice(raw: str) -> str:
+    if raw not in ("plain", "lively"):
+        raise ValueError(f"DIGEST_VOICE must be plain or lively, got {raw!r}")
+    return raw
+
+
 def get_settings() -> Settings:
     env = lambda k, d="": (os.environ.get(k) or "").strip() or d
     return Settings(
@@ -50,6 +57,7 @@ def get_settings() -> Settings:
         timezone=env("TIMEZONE", "Africa/Casablanca"),
         digest_language=env("DIGEST_LANGUAGE", "English"),
         digest_hours=_hours(env("DIGEST_HOURS", "7,16,22")),
+        digest_voice=_voice(env("DIGEST_VOICE", "lively")),
         max_stories_per_category=int(env("MAX_STORIES_PER_CATEGORY", "4")),
         gemini_api_key=env("GEMINI_API_KEY"),
         gemini_model=env("GEMINI_MODEL", "gemini-3.5-flash-lite"),
