@@ -40,7 +40,7 @@ def test_hours_rejects_non_numbers():
 def test_settings_defaults(clean_env):
     s = get_settings()
     assert s.smtp_port == 587
-    assert s.digest_hours == [7, 16, 22]
+    assert s.digest_hours == [7, 20]
     assert s.timezone == "Africa/Casablanca"
     assert s.email_to == []
     assert s.gemini_api_key == ""
@@ -77,7 +77,7 @@ def test_settings_parses_env(clean_env):
 @pytest.mark.parametrize("key, attr, default", [
     ("SMTP_PORT", "smtp_port", 587),
     ("TIMEZONE", "timezone", "Africa/Casablanca"),
-    ("DIGEST_HOURS", "digest_hours", [7, 16, 22]),
+    ("DIGEST_HOURS", "digest_hours", [7, 20]),
 ])
 def test_settings_whitespace_env_value_uses_default(clean_env, key, attr, default):
     clean_env.setenv(key, "   ")
