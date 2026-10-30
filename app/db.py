@@ -81,7 +81,7 @@ def fetch_recent_stories(conn: psycopg.Connection, hours: int = 48) -> dict[str,
     rows = conn.execute(
         """
         SELECT payload FROM digests
-        WHERE kind = 'summary' AND created_at > now() - make_interval(hours => %s)
+        WHERE kind IN ('summary', 'update') AND created_at > now() - make_interval(hours => %s)
         ORDER BY created_at DESC
         """,
         (hours,),

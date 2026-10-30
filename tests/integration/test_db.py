@@ -161,6 +161,12 @@ def test_fetch_recent_stories_includes_the_lead(conn):
                                                      {"title": "Other", "summary": "Other summary"}]}
 
 
+def test_fetch_recent_stories_includes_update_digests(conn):
+    save(conn, section("tech", "Morning story"), hours_ago=8)
+    save(conn, section("tech", "Afternoon update"), kind="update")
+    assert [s["title"] for s in db.fetch_recent_stories(conn)["tech"]] == ["Afternoon update", "Morning story"]
+
+
 def test_fetch_recent_curiosities_newest_first_within_window(conn):
     for title, days in [("Old", 20), ("Mid", 3), ("New", 0)]:
         digest_id = db.save_digest(conn, "summary", "S", {"sections": [], "curiosity": {"title": title}},

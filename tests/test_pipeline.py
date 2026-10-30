@@ -57,6 +57,14 @@ class FakeSummarizer:
             raise self.lead
         return self.lead, "why", Usage(1, 1)
 
+    highs = None      # stories returned by highlights(), or an exception to raise
+
+    def highlights(self, articles, previous=None, max_stories=5):
+        self.calls.append("highlights")
+        if isinstance(self.highs, Exception):
+            raise self.highs
+        return self.highs, Usage(10, 2)
+
     def curiosity(self, previous):
         self.calls.append("curiosity")
         if isinstance(self.curio, Exception):
@@ -284,3 +292,61 @@ def test_run_digest_preview_sends_and_marks_nothing(wired):
     assert "mark_sent" not in wired.db.calls and "save_digest" not in wired.db.calls
     assert "finish_run" in wired.db.calls
     assert "Geopolitics story" in r.digest.html
+
+
+# --------------------------------------------------------------------------- run_update
+def hl(title, ids, status="new") -> Story:
+    return Story(title=title, summary="s", sources=[{"name": "BBC", "url": "https://b/1"}],
+                 single_source=True, article_ids=ids, status=status)
+
+
+@pytest.fixture
+def updating(wired, monkeypatch):
+    marked = []
+    wired.db.mark_sent = lambda conn, ids: marked.append(ids)
+    z = FakeSummarizer({})
+    monkeypatch.setattr(pipeline, "make_summarizer", lambda s: z)
+    return SimpleNamespace(wired=wired, z=z, marked=marked)
+
+
+def test_run_update_sends_and_marks_only_shown_articles(updating):
+    updating.z.highs = [hl("A", [1]), hl("B", [2]), hl("Same again", [3], "repeat")]
+    r = pipeline.run_update(updating.wired.settings, send=True)
+    assert len(updating.wired.sent) == 1 and updating.wired.sent[0][0] == r.digest.subject
+    assert updating.marked == [[1, 2]]                 # the repeat's article stays unsent for the evening
+    assert updating.wired.db.calls[-2:] == ["save_digest", "finish_run"]
+
+
+def test_run_update_too_few_stories_sends_nothing(updating):
+    updating.z.highs = [hl("Only one", [1]), hl("Repeat", [2], "repeat")]
+    r = pipeline.run_update(updating.wired.settings, send=True)
+    assert r.digest is None and updating.wired.sent == [] and updating.marked == []
+    assert "save_digest" not in updating.wired.db.calls and "finish_run" in updating.wired.db.calls
+
+
+def test_run_update_uses_the_article_category_as_label(updating, monkeypatch, sources_cfg, article):
+    tech = [article(1, category="tech"), article(2, category="geopolitics")]
+    monkeypatch.setattr(pipeline, "prepare", lambda conn, s, cap: Prepared(
+        sources_cfg, tech, {"tech": tech[:1], "geopolitics": tech[1:]}, new_articles=2, errors=[]))
+    updating.z.highs = [hl("A", [1]), hl("B", [2])]
+    r = pipeline.run_update(updating.wired.settings, send=False)
+    assert "TECH &amp; AI" in r.digest.html and "GEOPOLITICS" in r.digest.html
+
+
+def test_run_update_llm_failure_fails_the_run(updating):
+    updating.z.highs = LLMError("boom")
+    with pytest.raises(LLMError):
+        pipeline.run_update(updating.wired.settings, send=True)
+    assert updating.wired.sent == [] and updating.marked == []
+
+
+def test_run_update_without_articles_skips_the_llm(updating, monkeypatch, sources_cfg):
+    monkeypatch.setattr(pipeline, "prepare", lambda conn, s, cap: Prepared(sources_cfg, [], {}, 0, []))
+    r = pipeline.run_update(updating.wired.settings, send=True)
+    assert r.digest is None and updating.z.calls == []
+
+
+def test_run_update_preview_sends_and_marks_nothing(updating):
+    updating.z.highs = [hl("A", [1]), hl("B", [2])]
+    r = pipeline.run_update(updating.wired.settings, send=False)
+    assert r.digest is not None and updating.wired.sent == [] and updating.marked == []
