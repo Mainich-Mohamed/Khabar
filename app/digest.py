@@ -40,6 +40,13 @@ class Lead:
     why_it_matters: str
 
 
+@dataclass
+class UpdateItem:
+    key: str               # category of the story
+    label: str
+    story: Story
+
+
 def slot_label(now: datetime) -> str:
     if now.hour < 12:
         return "Morning"
@@ -188,6 +195,66 @@ def build_summary_digest(sections: list[Section], tz: str, fallback_note: bool =
                            "why_it_matters": lead.why_it_matters}
     if curiosity:
         payload["curiosity"] = curiosity.to_dict()
+    return Digest(subject=subject, html="\n".join(h), text="\n".join(t), payload=payload)
+
+
+def build_update_digest(items: list[UpdateItem], tz: str) -> Digest:
+    """The short mid-day email: the few stories that could not wait for the full brief, in importance order"""
+    now = datetime.now(ZoneInfo(tz))
+    slot = slot_label(now)
+    subject = f"⚡ {items[0].story.title} · {slot} update"
+    teaser = " · ".join(it.story.title for it in items[1:3])
+
+    h = []
+    if teaser:   # hidden in the email itself
+        h.append(f'<div style="display:none;max-height:0;overflow:hidden;mso-hide:all">{escape(teaser)}</div>')
+    h += [
+        f'<div style="font-family:{FONT};max-width:640px;margin:0 auto;color:#1a1a1a;line-height:1.5">',
+        f'<h2 style="margin:0 0 4px">{slot} update</h2>',
+        f'<div style="color:#666;font-size:13px;margin-bottom:16px">{now:%A %d %B %Y, %H:%M} · {len(items)} stories</div>',
+    ]
+    t = [f"{slot} update — {now:%A %d %B %Y, %H:%M}", ""]
+
+    for n, it in enumerate(items, start=1):
+        st = it.story
+        flag = (' <span style="color:#b45309;font-size:11px">· single source</span>'
+                if st.single_source else "")
+        is_update = st.status == "update" and st.previous_title
+        badge = ('<span style="color:#fff;background:#1a56db;font-size:11px;padding:1px 6px;'
+                 'border-radius:3px;margin-right:6px">Update</span>' if is_update else "")
+        earlier = (f'<div style="font-size:12px;color:#888;margin-bottom:3px">'
+                   f"Earlier: {escape(st.previous_title)}</div>" if is_update else "")
+        h.append(
+            '<div style="margin-bottom:18px">'
+            f'<div style="font-size:11px;letter-spacing:.06em;color:#1a56db;font-weight:600">'
+            f"{escape(it.label.upper())}</div>"
+            f'<div style="font-weight:600;font-size:15px;margin-bottom:3px">{n}. {badge}{escape(st.title)}</div>'
+            f"{earlier}"
+            f'<div style="font-size:14px;color:#333">{escape(st.summary)}</div>'
+            f'<div style="font-size:12px;color:#888;margin-top:4px">{_source_links(st)}{flag}</div>'
+            "</div>"
+        )
+        t.append(f"{n}. [Update] {st.title}" if is_update else f"{n}. {st.title}")
+        t.append(f"   {it.label}")
+        if is_update:
+            t.append(f"   Earlier: {st.previous_title}")
+        t.append(f"   {st.summary}")
+        t += [f"   - {s['name']}: {s['url']}" for s in st.sources]
+        if st.single_source:
+            t.append("   (single source)")
+        t.append("")
+
+    h.append('<p style="color:#888;font-size:13px;margin-top:24px">The full brief comes this evening.</p>')
+    h.append('<p style="color:#aaa;font-size:11px;margin-top:16px">Summaries are AI-generated from the '
+             "linked articles. Check the source before relying on a detail.</p></div>")
+    t.append("The full brief comes this evening.")
+
+    sections: dict[str, dict] = {}   # same payload shape as a full brief, so history code reads both
+    for it in items:
+        sec = sections.setdefault(it.key, {"category": it.key, "label": it.label, "mode": "summary",
+                                           "stories": [], "dropped": []})
+        sec["stories"].append(it.story.to_dict())
+    payload = {"generated_at": now.isoformat(), "slot": slot.lower(), "sections": list(sections.values())}
     return Digest(subject=subject, html="\n".join(h), text="\n".join(t), payload=payload)
 
 

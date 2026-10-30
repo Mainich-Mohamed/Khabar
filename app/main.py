@@ -4,7 +4,9 @@
   send-test       send a test email to EMAIL_TO
   ingest          fetch feeds and store new articles
   preview         build the AI digest into preview.html (calls the LLM, sends nothing, marks nothing)
+  preview-update  build the afternoon update into preview-update.html (calls the LLM, sends nothing)
   run             ingest + summarize + email the digest (what the scheduler calls)
+  update          the short afternoon update (what the 16:00 trigger calls)
   run-headlines   Step 1 behaviour: email raw headlines, no LLM
   scheduler       stay running and send the digest at DIGEST_HOURS
   llm-test        one tiny Gemini request: is the key/model right?
@@ -18,7 +20,7 @@ from app.config import get_settings, load_sources
 from app.digest import build_headlines
 from app.ingest import fetch_feed, ingest_all, make_client
 from app.llm import LLMError, make_summarizer
-from app.pipeline import make_emailer, run_digest
+from app.pipeline import make_emailer, run_digest, run_update
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)          # one line per request is too noisy
@@ -77,6 +79,25 @@ def cmd_run(s) -> int:
     return 0
 
 
+def cmd_update(s) -> int:
+    r = run_update(s, send=True)
+    print(f"Sent: {r.digest.subject}" if r.digest else "No update sent: not enough news.")
+    return 0
+
+
+def cmd_preview_update(s) -> int:
+    r = run_update(s, send=False)
+    if r.digest is None:
+        print("Not enough news for an update right now: nothing written.")
+        return 0
+    with open("preview-update.html", "w", encoding="utf-8") as f:
+        f.write(r.digest.html)
+    print(f"\nSubject: {r.digest.subject}")
+    print(f"Wrote preview-update.html — {r.considered} articles considered, "
+          f"{r.usage.input_tokens} in / {r.usage.output_tokens} out tokens. Nothing sent or marked.")
+    return 0
+
+
 def cmd_run_headlines(s) -> int:
     cfg = load_sources(s.sources_path)
     emailer = make_emailer(s)
@@ -117,6 +138,8 @@ def main() -> int:
         "ingest": cmd_ingest,
         "preview": cmd_preview,
         "run": cmd_run,
+        "update": cmd_update,
+        "preview-update": cmd_preview_update,
         "run-headlines": cmd_run_headlines,
         "llm-test": cmd_llm_test,
     }

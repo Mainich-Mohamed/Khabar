@@ -16,15 +16,8 @@ from app.config import Settings
 
 log = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are the editor of a concise personal news brief for a busy reader.
-
-You receive numbered news articles from ONE category. Your job:
-1. Group articles that cover the same event into ONE story (different outlets, same news = one story).
-2. Select the most important stories: real-world impact first, then novelty. Skip minor, promotional,
-   opinion-only, or duplicate items.
-{style}
-
-Strict rules:
+# Shared by SYSTEM_PROMPT and UPDATE_PROMPT: fact rules and the new/update/repeat statuses
+STORY_RULES = """Strict rules:
 - Use ONLY facts stated in the provided articles. Never add outside knowledge, numbers, or quotes.
 - If the articles disagree, say so briefly.
 - If an article is only a headline with no text, stay general rather than guessing specifics.
@@ -41,7 +34,29 @@ You may also receive stories already emailed to the reader, numbered P1, P2, ...
 Use "repeat" only when you are certain nothing new was reported. If you are unsure, use "update".
 If no previously sent stories are given, every story is "new"."""
 
-# Rule 3 of SYSTEM_PROMPT, chosen by DIGEST_VOICE. "plain" is the original wording, kept to switch back
+SYSTEM_PROMPT = """You are the editor of a concise personal news brief for a busy reader.
+
+You receive numbered news articles from ONE category. Your job:
+1. Group articles that cover the same event into ONE story (different outlets, same news = one story).
+2. Select the most important stories: real-world impact first, then novelty. Skip minor, promotional,
+   opinion-only, or duplicate items.
+{style}
+
+""" + STORY_RULES
+
+UPDATE_PROMPT = """You are the editor of the short afternoon update of a personal news brief for a busy reader.
+The reader got this morning's full brief, and a full brief comes this evening.
+
+You receive numbered news articles from ALL categories. Your job:
+1. Group articles that cover the same event into ONE story (different outlets, same news = one story).
+2. Keep ONLY developments worth interrupting the reader's afternoon: major real-world impact, a turning
+   point, or an important development in a story already sent. Return fewer stories than allowed if fewer
+   qualify, and none if nothing qualifies. Never pad the list with minor items.
+{style}
+
+""" + STORY_RULES
+
+# Rule 3 of SYSTEM_PROMPT and UPDATE_PROMPT, chosen by DIGEST_VOICE. "plain" is the original wording, kept to switch back
 VOICES = {
     "plain": "3. For each story write a neutral headline and a 2-3 sentence summary: what happened, then why it matters.",
     "lively": """3. For each story write a headline and a 2-3 sentence summary, like a sharp, warm newsletter writer:
@@ -408,6 +423,28 @@ class Summarizer:
         repeats = sum(st.status == "repeat" for st in stories)
         log.info("%-24s %2d articles -> %d stories, updates=%d repeats=%d (%d in / %d out tokens) [%s, %s]",
                  category_label, len(batch), len(stories), updates, repeats,
+                 usage.input_tokens, usage.output_tokens, self.label, self.voice)
+        return stories, usage
+
+    def highlights(self, articles: list[dict], previous: list[dict] | None = None,
+                   max_stories: int = 5) -> tuple[list[Story], Usage]:
+        """The few developments worth an afternoon email, across all categories. May be empty"""
+        system = UPDATE_PROMPT.format(language=self.language, style=VOICES[self.voice])
+        prompt = "\n".join([
+            f"Return at most {max_stories} stories, or none.",
+            "",
+            "Articles:",
+            "",
+            format_articles(articles, self.lead_chars),
+        ])
+        if previous:
+            prompt += "\n\nPreviously sent stories:\n\n" + format_previous(previous)
+        data, usage = self._call(system, prompt)
+        if not isinstance(data.get("stories"), list):
+            raise LLMError(f"update call returned no story list: {str(data)[:200]}")
+        stories = parse_stories(data["stories"], articles, max_stories, previous)
+        log.info("Update: %d articles -> %d stories, repeats=%d (%d in / %d out tokens) [%s, %s]",
+                 len(articles), len(stories), sum(st.status == "repeat" for st in stories),
                  usage.input_tokens, usage.output_tokens, self.label, self.voice)
         return stories, usage
 

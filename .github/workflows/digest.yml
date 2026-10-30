@@ -1,14 +1,15 @@
 name: Digest
 
 on:
-  # Triggered by 'khabar-trigger' Cloudflare Worker (07:00, 16:00, 22:00 UTC) to avoid GitHub cron delays.
+  # Triggered by 'khabar-trigger' Cloudflare Worker to avoid GitHub cron delays
+  # (07:00 and 20:00 UTC: full brief, 16:00 UTC: short update).
   workflow_dispatch:
     inputs:
       command:
         description: "What to run"
         type: choice
         default: check-feeds
-        options: [check-feeds, preview, run]
+        options: [check-feeds, preview, preview-update, run, update]
 
 concurrency:
   group: digest          # never two digests at once
@@ -49,19 +50,19 @@ jobs:
       # Dead man's switch: Healthchecks emails you when a slot passes without a success ping,
       # whatever the cause (Worker down, token expired, GitHub didn't start the job, crash)
       - name: Report success to Healthchecks
-        if: success() && inputs.command == 'run'
+        if: success() && (inputs.command == 'run' || inputs.command == 'update')
         continue-on-error: true            # monitoring being down must not fail the digest
         env:
           HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
         run: curl -fsS -m 10 --retry 3 "$HEALTHCHECK_URL"
       - name: Report failure to Healthchecks
-        if: failure() && inputs.command == 'run'
+        if: failure() && (inputs.command == 'run' || inputs.command == 'update')
         continue-on-error: true
         env:
           HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
         run: curl -fsS -m 10 --retry 3 "$HEALTHCHECK_URL/fail"
-      - if: inputs.command == 'preview'
+      - if: inputs.command == 'preview' || inputs.command == 'preview-update'
         uses: actions/upload-artifact@v6
         with:
           name: preview
-          path: preview.html
+          path: preview*.html

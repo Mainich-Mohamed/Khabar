@@ -2,7 +2,8 @@ from datetime import datetime
 
 import pytest
 
-from app.digest import Lead, Section, build_headlines, build_summary_digest, slot_label
+from app.digest import (Lead, Section, UpdateItem, build_headlines, build_summary_digest, build_update_digest,
+                        slot_label)
 from app.llm import Curiosity, Story
 
 TZ = "Africa/Casablanca"
@@ -192,3 +193,37 @@ def test_payload_records_lead_and_curiosity():
     assert d.payload["lead"]["category"] == "geo" and d.payload["lead"]["why_it_matters"] == "Fighting may stop."
     assert d.payload["curiosity"]["url"].endswith("Emu+War")
     assert "lead" not in build_summary_digest([], TZ).payload
+
+
+# --------------------------------------------------------------------------- update digest
+def item(title="Truce agreed", key="geo", label="Geopolitics", st=None) -> UpdateItem:
+    return UpdateItem(key=key, label=label, story=st or story(title))
+
+
+def test_update_digest_is_flat_numbered_and_headline_subject():
+    d = build_update_digest([item("First"), item("Second", "eco", "Economy")], TZ)
+    assert d.subject.startswith("⚡ First · ") and d.subject.endswith(" update")
+    assert d.html.index("1. First") < d.html.index("2. Second")
+    assert "GEOPOLITICS" in d.html and "ECONOMY" in d.html and "2 stories" in d.html
+    assert "The full brief comes this evening." in d.html and "DID YOU KNOW" not in d.html
+    assert "1. First" in d.text and "2. Second" in d.text and "- DW: https://dw.test/2" in d.text
+
+
+def test_update_digest_shows_update_badge_and_single_source():
+    d = build_update_digest([item(st=update_story()), item("Solo", st=story("Solo", single=True))], TZ)
+    assert d.html.count(">Update</span>") == 1 and "Earlier: Ceasefire agreed" in d.html
+    assert d.html.count("single source") == 1
+    assert "1. [Update] Ceasefire broken" in d.text
+
+
+def test_update_digest_escapes_html():
+    d = build_update_digest([item(st=story(title="<script>x</script>", summary="A & B"), label="Geo <W>")], TZ)
+    assert "<script>" not in d.html and "A &amp; B" in d.html and "GEO &lt;W&gt;" in d.html   # label is upper-cased, then escaped
+
+
+def test_update_digest_payload_groups_by_category_like_a_full_brief():
+    d = build_update_digest([item("A1"), item("B1", "eco", "Economy"), item("A2")], TZ)
+    assert [s["category"] for s in d.payload["sections"]] == ["geo", "eco"]
+    assert [st["title"] for st in d.payload["sections"][0]["stories"]] == ["A1", "A2"]
+    assert d.payload["sections"][0]["mode"] == "summary"
+    assert d.payload["slot"] in {"morning", "afternoon", "evening"}

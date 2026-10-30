@@ -5,13 +5,18 @@ from datetime import datetime, timezone
 
 from app import db
 from app.config import Settings, SourcesConfig, load_sources
-from app.digest import Digest, Lead, Section, build_summary_digest
+from app.digest import Digest, Lead, Section, UpdateItem, build_summary_digest, build_update_digest
 from app.emailer import Emailer
 from app.extract import extract_leads
 from app.ingest import ingest_all
 from app.llm import Curiosity, LLMError, QuotaExhausted, Summarizer, Usage, make_summarizer
 
 log = logging.getLogger(__name__)
+
+UPDATE_PER_CATEGORY = 8    # articles per category fed to the update (lead extraction is the slow part)
+UPDATE_POOL = 40           # best articles across categories sent to the model
+MAX_UPDATE_STORIES = 5
+MIN_UPDATE_STORIES = 2     # fewer than this and no email goes out
 
 
 @dataclass
@@ -27,7 +32,7 @@ class Prepared:
 
 @dataclass
 class RunResult:
-    digest: Digest
+    digest: Digest | None                 # None: an update with too little news, nothing was sent
     new_articles: int
     considered: int
     usage: Usage
@@ -162,3 +167,44 @@ def run_digest(s: Settings, send: bool = True) -> RunResult:
              summarizer.label if summarizer else "no LLM", len(p.unsent),
              usage.input_tokens, usage.output_tokens, fallbacks or "none")
     return RunResult(digest, p.new_articles, len(p.unsent), usage, errors)
+
+
+def run_update(s: Settings, send: bool = True) -> RunResult:
+    """The short mid-day email. Only the articles behind the stories it shows are marked as sent, so the
+    evening brief still covers the rest. Fewer than MIN_UPDATE_STORIES worth showing: nothing is sent.
+    An LLM failure fails the run: for an optional email a headline fallback isn't worth sending"""
+    emailer = make_emailer(s) if send else None
+    summarizer = make_summarizer(s)   # raises LLMError without an API key
+
+    with db.connect(s.database_url) as conn:
+        db.ensure_schema(conn)
+        run_id = db.start_run(conn, "update" if send else "update-preview")
+        p = prepare(conn, s, UPDATE_PER_CATEGORY)
+
+    pool = rank([a for arts in p.candidates.values() for a in arts], p.cfg)[:UPDATE_POOL]
+    previous = [st for stories in p.previous.values() for st in stories]
+    stories, usage = summarizer.highlights(pool, previous, MAX_UPDATE_STORIES) if pool else ([], Usage())
+    shown = [st for st in stories if st.status != "repeat"]
+
+    digest, marked = None, []
+    if len(shown) >= MIN_UPDATE_STORIES:
+        category = {a["id"]: a["category"] for a in pool}
+        items = [UpdateItem(key, p.cfg.categories.get(key, key), st)
+                 for st in shown for key in [category[st.article_ids[0]]]]
+        digest = build_update_digest(items, s.timezone)
+        marked = sorted({i for st in shown for i in st.article_ids})
+    else:
+        log.info("No update sent: %d stories worth showing (minimum %d)", len(shown), MIN_UPDATE_STORIES)
+
+    # Reconnect: the first connection sat idle during the LLM call (see run_digest)
+    with db.connect(s.database_url) as conn:
+        if send and digest:
+            emailer.send(digest.subject, digest.html, digest.text)
+            db.save_digest(conn, "update", digest.subject, digest.payload, summarizer.label,
+                           usage.input_tokens, usage.output_tokens, [])
+            db.mark_sent(conn, marked)
+        db.finish_run(conn, run_id, p.new_articles, len(marked) if send else 0, p.errors)
+
+    log.info("Update built [%s]: %d articles considered, %d stories shown, %d in / %d out tokens",
+             summarizer.label, len(pool), len(shown), usage.input_tokens, usage.output_tokens)
+    return RunResult(digest, p.new_articles, len(pool), usage, list(p.errors))

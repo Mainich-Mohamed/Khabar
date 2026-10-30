@@ -56,7 +56,7 @@ def get_settings() -> Settings:
         max_per_category=int(env("MAX_PER_CATEGORY", "8")),
         timezone=env("TIMEZONE", "Africa/Casablanca"),
         digest_language=env("DIGEST_LANGUAGE", "English"),
-        digest_hours=_hours(env("DIGEST_HOURS", "7,16,22")),
+        digest_hours=_hours(env("DIGEST_HOURS", "7,20")),
         digest_voice=_voice(env("DIGEST_VOICE", "lively")),
         max_stories_per_category=int(env("MAX_STORIES_PER_CATEGORY", "4")),
         gemini_api_key=env("GEMINI_API_KEY"),
