@@ -1,0 +1,110 @@
+<mjml lang="en">
+  <mj-head>
+    <mj-title>Khabar · Afternoon update</mj-title>
+    <mj-preview>Three things since this morning: talks resume, the port reopens, a chip halves power.</mj-preview>
+    <mj-raw>
+      <meta name="color-scheme" content="light dark">
+      <meta name="supported-color-schemes" content="light dark">
+    </mj-raw>
+    <mj-attributes>
+      <mj-all font-family="-apple-system, 'Segoe UI', Roboto, Arial, sans-serif" />
+      <mj-text color="#101f1c" font-size="16px" line-height="1.5" padding="0" />
+      <mj-class name="h2" font-size="18px" font-weight="700" line-height="1.3" />
+      <mj-class name="muted" color="#4a5955" font-size="12px" />
+      <mj-class name="num" font-size="22px" font-weight="700" color="#0b5d4f" line-height="1.2" />
+    </mj-attributes>
+    <mj-style>
+      @media (prefers-color-scheme: dark) {
+        .canvas, .paper, .paper > table, .paper td { background-color:#06120f !important; }
+        .ink div { color:#f1f4f3 !important; }
+        .muted div, span.muted { color:#99a4a1 !important; }
+        .num div, .link a { color:#54a896 !important; }
+        .rule p { border-top-color:#354541 !important; }
+        .light-only { display:none !important; }
+        .dark-only { display:inline-block !important; }
+      }
+    </mj-style>
+  </mj-head>
+
+  <mj-body width="600px" background-color="#fbfcfb" css-class="canvas">
+
+    <!-- Header: same as evening, right label changes -->
+    <mj-section padding="22px 28px 0" css-class="paper">
+      <mj-group>
+        <mj-column width="60%" vertical-align="middle">
+          <mj-text css-class="ink" font-size="25px" font-weight="700">
+            <img class="light-only" src="assets/mark-light.png" width="30" height="30" alt="" style="vertical-align:-7px;margin-right:8px"><img class="dark-only" src="assets/mark-dark.png" width="30" height="30" alt="" style="display:none;vertical-align:-7px;margin-right:8px">khabar
+          </mj-text>
+        </mj-column>
+        <mj-column width="40%" vertical-align="middle">
+          <mj-text css-class="muted" mj-class="muted" align="right" font-size="13px">Afternoon update</mj-text>
+        </mj-column>
+      </mj-group>
+    </mj-section>
+
+    <!-- Intro line + rule -->
+    <mj-section padding="16px 28px 0" css-class="paper">
+      <mj-column>
+        <mj-text css-class="muted" color="#4a5955" font-size="15px" padding="0 0 14px">Three things since this morning.</mj-text>
+        <mj-divider css-class="rule" border-color="#e3e7e6" border-width="1px" padding="0 0 18px" />
+      </mj-column>
+    </mj-section>
+
+    <!-- Item 1: mj-group keeps number and text side by side on phones -->
+    <mj-section padding="0 28px 6px" css-class="paper">
+      <mj-group>
+        <mj-column width="8%">
+          <mj-text css-class="num" mj-class="num">1</mj-text>
+        </mj-column>
+        <mj-column width="92%">
+          <mj-text css-class="ink" mj-class="h2">Ceasefire talks resume after a week of silence</mj-text>
+          <mj-text css-class="ink" padding="5px 0 0">Negotiators met again on Thursday and agreed to keep the lines open while a monitoring plan is drafted.</mj-text>
+          <mj-text css-class="link" font-size="13px">
+            <a href="#" style="color:#0b5d4f;text-decoration:underline;display:inline-block;padding:10px 14px 10px 0;line-height:24px">Source One</a><a href="#" style="color:#0b5d4f;text-decoration:underline;display:inline-block;padding:10px 14px 10px 0;line-height:24px">Source Three</a>
+          </mj-text>
+        </mj-column>
+      </mj-group>
+    </mj-section>
+
+    <!-- Item 2 -->
+    <mj-section padding="0 28px 6px" css-class="paper">
+      <mj-group>
+        <mj-column width="8%">
+          <mj-text css-class="num" mj-class="num">2</mj-text>
+        </mj-column>
+        <mj-column width="92%">
+          <mj-text css-class="ink" mj-class="h2">Main port reopens to cargo ships</mj-text>
+          <mj-text css-class="ink" padding="5px 0 0">Container traffic restarted after two days of closure, with a backlog expected to clear by the weekend.</mj-text>
+          <mj-text css-class="link" font-size="13px">
+            <a href="#" style="color:#0b5d4f;text-decoration:underline;display:inline-block;padding:10px 14px 10px 0;line-height:24px">Source Two</a>
+          </mj-text>
+        </mj-column>
+      </mj-group>
+    </mj-section>
+
+    <!-- Item 3 -->
+    <mj-section padding="0 28px 6px" css-class="paper">
+      <mj-group>
+        <mj-column width="8%">
+          <mj-text css-class="num" mj-class="num">3</mj-text>
+        </mj-column>
+        <mj-column width="92%">
+          <mj-text css-class="ink" mj-class="h2">Chipmaker unveils a processor that halves energy use</mj-text>
+          <mj-text css-class="ink" padding="5px 0 0">Cheaper power bills for data centres and longer battery life for ordinary devices.</mj-text>
+          <mj-text css-class="link" font-size="13px">
+            <a href="#" style="color:#0b5d4f;text-decoration:underline;display:inline-block;padding:10px 14px 10px 0;line-height:24px">Source One</a><a href="#" style="color:#0b5d4f;text-decoration:underline;display:inline-block;padding:10px 14px 10px 0;line-height:24px">Source Two</a>
+          </mj-text>
+        </mj-column>
+      </mj-group>
+    </mj-section>
+
+    <!-- Footer: no unsubscribe, address or mission line -->
+    <mj-section padding="18px 28px 32px" css-class="paper">
+      <mj-column>
+        <mj-divider css-class="rule" border-color="#e3e7e6" border-width="1px" padding="0 0 14px" />
+        <mj-text css-class="muted" mj-class="muted" line-height="1.5">The full brief comes this evening.</mj-text>
+      </mj-column>
+    </mj-section>
+
+  </mj-body>
+</mjml>

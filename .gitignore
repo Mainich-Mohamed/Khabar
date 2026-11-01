@@ -16,6 +16,7 @@ venv/
 # Generated output
 compare.html
 .agents/
+.claude/
 CLAUDE.md
 HANDOFF.md
 
