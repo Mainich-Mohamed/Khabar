@@ -1,0 +1,15 @@
+<mjml>
+  <mj-body>
+    <mj-section background-color="#f1f1f1" padding="24px 0">
+      <mj-column>
+        <mj-divider border-color="#d8d8d8" border-width="1px" border-style="solid" padding="0 25px 16px" />
+        <mj-text align="center" color="#5a5a5a" font-size="12px" line-height="18px">
+          Northwind Supply Co. &middot; 400 Harbor Way, Seattle, WA 98104
+        </mj-text>
+        <mj-text align="center" color="#5a5a5a" font-size="12px" line-height="18px">
+          <a href="https://example.com/unsubscribe" style="color:#5a5a5a;">Unsubscribe</a> &middot;
+          <a href="https://example.com/preferences" style="color:#5a5a5a;">Email preferences</a>
+        </mj-text>      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

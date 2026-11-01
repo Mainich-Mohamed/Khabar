@@ -1,0 +1,104 @@
+<mjml lang="en" dir="ltr">
+  <mj-head>
+    <mj-title>Your Northwind order #{{order.number}} is confirmed</mj-title>
+    <mj-preview>Order {{order.number}} confirmed — arriving {{order.eta}}. Track it anytime.</mj-preview>
+
+    <mj-font name="Inter" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700" />
+
+    <mj-attributes>
+      <mj-all font-family="Inter, Arial, sans-serif" />
+      <mj-text color="#2b2b2b" font-size="15px" line-height="23px" padding="8px 24px" />
+      <mj-button background-color="#0b5fff" color="#ffffff" border-radius="4px" inner-padding="14px 32px" font-size="15px" font-weight="600" />
+      <mj-divider border-color="#e3e6ea" border-width="1px" border-style="solid" padding="16px 24px" />
+      <mj-table font-size="14px" line-height="20px" color="#2b2b2b" padding="8px 24px" />
+      <mj-class name="h1" font-size="26px" line-height="32px" font-weight="700" color="#121212" />
+      <mj-class name="muted" font-size="13px" line-height="19px" color="#5a5a5a" />
+    </mj-attributes>
+
+    <mj-html-attributes>
+      <mj-selector path=".email-heading div">
+        <mj-html-attribute name="role">heading</mj-html-attribute>
+        <mj-html-attribute name="aria-level">1</mj-html-attribute>
+      </mj-selector>
+    </mj-html-attributes>
+
+    <mj-style inline="inline">
+      .receipt-total td { font-weight: 700; }
+    </mj-style>
+  </mj-head>
+
+  <mj-body background-color="#f1f1f1" width="600px">
+
+    <mj-section background-color="#ffffff" padding="24px 0 0">
+      <mj-column>
+        <mj-image src="https://cdn.example.com/northwind-logo.png" alt="Northwind Supply Co." width="160px" href="https://example.com" padding="0 24px 8px" />
+      </mj-column>
+    </mj-section>
+
+    <mj-section background-color="#ffffff" padding="8px 0 0">
+      <mj-column>
+        <mj-text css-class="email-heading" mj-class="h1">
+          Thanks, {{customer.firstName}} — your order is confirmed
+        </mj-text>
+        <mj-text>
+          Order <strong>#{{order.number}}</strong> was placed on {{order.placedAt}} and is
+          estimated to arrive by <strong>{{order.eta}}</strong>.
+        </mj-text>
+        <mj-divider />
+      </mj-column>
+    </mj-section>
+
+    <mj-section background-color="#ffffff" padding="0">
+      <mj-column>
+        <mj-table>
+          <tr style="border-bottom:1px solid #e3e6ea;text-align:left;">
+            <th scope="col" style="padding:0 15px 8px 0;">Item</th>
+            <th scope="col" style="padding:0 15px 8px;">Qty</th>
+            <th scope="col" style="padding:0 0 8px 15px;text-align:right;">Price</th>
+          </tr>
+          <tr>
+            <td style="padding:10px 15px 0 0;">Aeron Task Chair &mdash; Graphite</td>
+            <td style="padding:10px 15px 0;">1</td>
+            <td style="padding:10px 0 0 15px;text-align:right;">$1,195.00</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 15px 0 0;">Monitor Arm, Dual</td>
+            <td style="padding:10px 15px 0;">2</td>
+            <td style="padding:10px 0 0 15px;text-align:right;">$298.00</td>
+          </tr>
+          <tr class="receipt-total" style="border-top:1px solid #e3e6ea;">
+            <td style="padding:12px 15px 0 0;">Total</td>
+            <td style="padding:12px 15px 0;">&nbsp;</td>
+            <td style="padding:12px 0 0 15px;text-align:right;">{{order.total}}</td>
+          </tr>
+        </mj-table>
+      </mj-column>
+    </mj-section>
+
+    <mj-section background-color="#ffffff" padding="8px 0 24px">
+      <mj-column>
+        <mj-button href="https://example.com/orders/{{order.number}}">
+          Track your order
+        </mj-button>
+      </mj-column>
+    </mj-section>
+
+    <mj-raw>
+      <!-- htmlmin:ignore --> {{#if order.giftMessage}} <!-- htmlmin:ignore -->
+    </mj-raw>
+    <mj-section background-color="#ffffff" padding="0 0 24px">
+      <mj-column>
+        <mj-divider />
+        <mj-text mj-class="muted" container-background-color="#fff9e6">
+          Gift message: {{order.giftMessage}}
+        </mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-raw>
+      <!-- htmlmin:ignore --> {{/if}} <!-- htmlmin:ignore -->
+    </mj-raw>
+
+    <mj-include path="./partials/footer.mjml" />
+
+  </mj-body>
+</mjml>
