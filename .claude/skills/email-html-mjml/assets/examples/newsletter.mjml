@@ -1,0 +1,116 @@
+<mjml lang="en" dir="ltr">
+  <mj-head>
+    <mj-title>The Workbench — Issue 42: desk ergonomics that actually stick</mj-title>
+    <mj-preview>Issue 42: the three ergonomics changes that survive a busy week.</mj-preview>
+
+    <mj-raw>
+      <meta name="color-scheme" content="light dark">
+      <meta name="supported-color-schemes" content="light dark">
+    </mj-raw>
+
+    <mj-font name="Inter" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700" />
+
+    <mj-attributes>
+      <mj-all font-family="Inter, Arial, sans-serif" />
+      <mj-text color="#2b2b2b" font-size="15px" line-height="24px" padding="8px 24px" />
+      <mj-divider border-color="#e3e6ea" border-width="1px" border-style="solid" padding="16px 24px" />
+      <mj-class name="h1" font-size="26px" line-height="34px" font-weight="700" color="#121212" />
+      <mj-class name="h2" font-size="19px" line-height="26px" font-weight="700" color="#121212" />
+      <mj-class name="meta" font-size="12px" line-height="18px" color="#5a5a5a" />
+    </mj-attributes>
+
+    <mj-html-attributes>
+      <mj-selector path=".email-heading div">
+        <mj-html-attribute name="role">heading</mj-html-attribute>
+        <mj-html-attribute name="aria-level">1</mj-html-attribute>
+      </mj-selector>
+      <mj-selector path=".story-heading div">
+        <mj-html-attribute name="role">heading</mj-html-attribute>
+        <mj-html-attribute name="aria-level">2</mj-html-attribute>
+      </mj-selector>
+    </mj-html-attributes>
+
+    <!-- Light logo visible by default; dark logo hidden -->
+    <mj-style inline="inline">
+      .dark-logo { display: none !important; }
+    </mj-style>
+
+    <!-- Dark mode overrides -->
+    <mj-style>
+      @media (prefers-color-scheme: dark) {
+        .light-logo { display: none !important; }
+        .dark-logo  { display: block !important; }
+        .dm-bg      { background-color: #121212 !important; }
+        .dm-card    { background-color: #1e1e1e !important; }
+        .dm-text div { color: #F1F1F1 !important; }
+        .dm-muted div { color: #b9b9b9 !important; }
+      }
+    </mj-style>
+  </mj-head>
+
+  <mj-body background-color="#f1f1f1" width="600px" css-class="dm-bg">
+
+    <mj-wrapper background-color="#ffffff" padding="24px 0" css-class="dm-card">
+
+      <mj-section padding="0">
+        <mj-column>
+          <mj-image css-class="light-logo" src="https://cdn.example.com/workbench-logo-light.png" alt="The Workbench" width="180px" href="https://example.com" padding="0 24px 4px" />
+          <mj-image css-class="dark-logo" src="https://cdn.example.com/workbench-logo-dark.png" alt="The Workbench" width="180px" href="https://example.com" padding="0 24px 4px" />
+          <mj-text mj-class="meta" css-class="dm-muted" align="center">Issue 42 &middot; 10 August 2026</mj-text>
+          <mj-divider />
+        </mj-column>
+      </mj-section>
+
+      <mj-section padding="0">
+        <mj-column>
+          <mj-text css-class="email-heading dm-text" mj-class="h1">
+            Desk ergonomics that actually stick
+          </mj-text>
+          <mj-text css-class="dm-text">
+            Most ergonomics advice fails because it asks you to remember something.
+            The three changes below work because they are physical defaults — once set,
+            they hold without any effort from you.
+          </mj-text>
+        </mj-column>
+      </mj-section>
+
+      <mj-section padding="0">
+        <mj-column width="35%" vertical-align="top">
+          <mj-image src="https://cdn.example.com/story-monitor.jpg" alt="A monitor raised to eye level on a wooden riser" width="170px" padding="8px 0 8px 24px" />
+        </mj-column>
+        <mj-column width="65%" vertical-align="top">
+          <mj-text css-class="story-heading dm-text" mj-class="h2">1. Raise the monitor, not the chair</mj-text>
+          <mj-text css-class="dm-text">
+            The top of the screen should sit level with your eyes. Raising the chair
+            instead just moves the problem to your feet.
+          </mj-text>
+        </mj-column>
+      </mj-section>
+
+      <mj-section padding="0">
+        <mj-column width="35%" vertical-align="top">
+          <mj-image src="https://cdn.example.com/story-keyboard.jpg" alt="A split keyboard positioned at elbow height" width="170px" padding="8px 0 8px 24px" />
+        </mj-column>
+        <mj-column width="65%" vertical-align="top">
+          <mj-text css-class="story-heading dm-text" mj-class="h2">2. Set the keyboard to elbow height</mj-text>
+          <mj-text css-class="dm-text">
+            Forearms parallel to the floor. If the desk cannot go lower, a keyboard
+            tray costs less than a new desk and fixes the same problem.
+          </mj-text>
+        </mj-column>
+      </mj-section>
+
+      <mj-section padding="0">
+        <mj-column>
+          <mj-divider />
+          <mj-text mj-class="meta" css-class="dm-muted">
+            You are receiving this because you subscribed at example.com.
+            <a href="https://example.com/unsubscribe" style="color:#5a5a5a;">Unsubscribe</a>
+          </mj-text>
+        </mj-column>
+      </mj-section>
+
+    </mj-wrapper>
+
+  </mj-body>
+</mjml>

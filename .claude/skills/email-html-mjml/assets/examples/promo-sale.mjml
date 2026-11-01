@@ -1,0 +1,117 @@
+<mjml lang="en" dir="ltr">
+  <mj-head>
+    <mj-title>Summer Sale — up to 50% off everything</mj-title>
+    <mj-preview>48 hours only. Up to 50% off chairs, desks and lighting.</mj-preview>
+
+    <mj-font name="Raleway" href="https://fonts.googleapis.com/css?family=Raleway:400,700" />
+    <mj-breakpoint width="480px" />
+
+    <mj-attributes>
+      <mj-all font-family="Raleway, Arial, sans-serif" />
+      <mj-text color="#2b2b2b" font-size="15px" line-height="23px" />
+      <mj-button background-color="#E63946" color="#ffffff" border-radius="4px" inner-padding="14px 32px" font-weight="700" />
+      <mj-class name="hero-title" color="#ffffff" font-size="36px" line-height="44px" font-weight="700" />
+      <mj-class name="hero-sub" color="#f1f1f1" font-size="17px" line-height="25px" />
+      <mj-class name="card-title" color="#121212" font-size="17px" line-height="24px" font-weight="700" />
+    </mj-attributes>
+
+    <mj-html-attributes>
+      <mj-selector path=".email-heading div">
+        <mj-html-attribute name="role">heading</mj-html-attribute>
+        <mj-html-attribute name="aria-level">1</mj-html-attribute>
+      </mj-selector>
+    </mj-html-attributes>
+  </mj-head>
+
+  <mj-body background-color="#f1f1f1" width="600px">
+
+    <mj-section background-color="#ffffff" padding="8px 0">
+      <mj-column>
+        <mj-navbar base-url="https://example.com" hamburger="hamburger" ico-color="#121212">
+          <mj-navbar-link href="/chairs" color="#121212" font-family="Raleway, Arial, sans-serif">Chairs</mj-navbar-link>
+          <mj-navbar-link href="/desks" color="#121212" font-family="Raleway, Arial, sans-serif">Desks</mj-navbar-link>
+          <mj-navbar-link href="/lighting" color="#121212" font-family="Raleway, Arial, sans-serif">Lighting</mj-navbar-link>
+        </mj-navbar>
+      </mj-column>
+    </mj-section>
+
+    <mj-hero
+      mode="fixed-height"
+      height="420px"
+      background-url="https://cdn.example.com/summer-hero.jpg"
+      background-width="600px"
+      background-height="420px"
+      background-color="#1a1a2e"
+      background-position="center center"
+      inner-padding="32px 24px"
+      padding="60px 0">
+      <mj-text css-class="email-heading" mj-class="hero-title" align="center">
+        Summer Sale — up to 50% off
+      </mj-text>
+      <mj-text mj-class="hero-sub" align="center">
+        48 hours only. Everything in the workspace collection is marked down.
+      </mj-text>
+      <mj-button href="https://example.com/sale" align="center">
+        Shop the sale
+      </mj-button>
+    </mj-hero>
+
+    <mj-section
+      background-url="https://cdn.example.com/texture-slate.jpg"
+      background-color="#2a3448"
+      background-size="cover"
+      background-repeat="no-repeat"
+      background-position="top center"
+      padding="32px 0">
+      <mj-column>
+        <mj-text align="center" color="#ffffff" font-size="20px" line-height="28px" font-weight="700">
+          Free shipping on every order over $75
+        </mj-text>
+      </mj-column>
+    </mj-section>
+
+    <mj-section background-color="#ffffff" gutter="16px" padding="24px 0">
+      <mj-column background-color="#f7f8fa" border-radius="6px" vertical-align="top">
+        <mj-image src="https://cdn.example.com/product-chair.jpg" alt="Aeron task chair in graphite" width="240px" padding="0 0 12px" />
+        <mj-text mj-class="card-title" align="center">Task Chairs</mj-text>
+        <mj-text align="center">From $595 &mdash; save 40%</mj-text>
+      </mj-column>
+      <mj-column background-color="#f7f8fa" border-radius="6px" vertical-align="top">
+        <mj-image src="https://cdn.example.com/product-desk.jpg" alt="Standing desk in white oak" width="240px" padding="0 0 12px" />
+        <mj-text mj-class="card-title" align="center">Standing Desks</mj-text>
+        <mj-text align="center">From $749 &mdash; save 30%</mj-text>
+      </mj-column>
+    </mj-section>
+
+    <mj-section background-color="#ffffff" padding="0 0 24px">
+      <mj-group>
+        <mj-column vertical-align="middle">
+          <mj-image src="https://cdn.example.com/icon-returns.png" alt="Free returns" width="48px" padding="4px" />
+          <mj-text align="center" font-size="12px" line-height="16px">Free returns</mj-text>
+        </mj-column>
+        <mj-column vertical-align="middle">
+          <mj-image src="https://cdn.example.com/icon-warranty.png" alt="12 year warranty" width="48px" padding="4px" />
+          <mj-text align="center" font-size="12px" line-height="16px">12 yr warranty</mj-text>
+        </mj-column>
+        <mj-column vertical-align="middle">
+          <mj-image src="https://cdn.example.com/icon-support.png" alt="Support seven days a week" width="48px" padding="4px" />
+          <mj-text align="center" font-size="12px" line-height="16px">7-day support</mj-text>
+        </mj-column>
+      </mj-group>
+    </mj-section>
+
+    <mj-section background-color="#121212" padding="24px 0">
+      <mj-column>
+        <mj-social mode="horizontal" align="center" icon-size="28px" border="1px solid #121212" color="#ffffff" font-size="12px">
+          <mj-social-element name="instagram-noshare" href="https://instagram.com/northwind" alt="Northwind on Instagram" />
+          <mj-social-element name="facebook-noshare" href="https://facebook.com/northwind" alt="Northwind on Facebook" />
+          <mj-social-element name="youtube" href="https://youtube.com/@northwind" alt="Northwind on YouTube" />
+        </mj-social>
+        <mj-text align="center" color="#bdbdbd" font-size="12px" line-height="18px">
+          Northwind Supply Co. &middot; <a href="https://example.com/unsubscribe" style="color:#bdbdbd;">Unsubscribe</a>
+        </mj-text>
+      </mj-column>
+    </mj-section>
+
+  </mj-body>
+</mjml>
