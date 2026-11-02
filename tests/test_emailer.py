@@ -32,8 +32,9 @@ class FakeSMTP:
             raise smtplib.SMTPAuthenticationError(535, b"bad credentials")
         self.login_args = (user, password)
 
-    def send_message(self, msg):
+    def send_message(self, msg, to_addrs=None):
         self.sent.append(msg)
+        self.to_addrs = to_addrs
 
 
 @pytest.fixture(autouse=True)
@@ -63,7 +64,9 @@ def test_send_builds_multipart_message():
     assert smtp.tls and smtp.login_args == ("me@test", "pw")
     [msg] = smtp.sent
     assert msg["Subject"] == "Subject ✓"
-    assert msg["To"] == "a@test, b@test"
+    assert msg["To"] == "me@test"                       # recipients are never in the headers
+    assert smtp.to_addrs == ["a@test", "b@test"]
+    assert "a@test" not in msg.as_string()
     assert "me@test" in msg["From"]
     assert msg["Message-ID"]
     types = [p.get_content_type() for p in msg.walk()]

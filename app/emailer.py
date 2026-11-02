@@ -17,8 +17,8 @@ class Emailer:
     def send(self, subject: str, html: str, text: str) -> None:
         msg = EmailMessage()
         msg["Subject"] = subject
-        msg["From"] = f"News Digest <{self.user}>"
-        msg["To"] = ", ".join(self.to)
+        msg["From"] = f"Khabar <{self.user}>"
+        msg["To"] = self.user        # recipients stay private: they only go in the SMTP envelope
         msg["Date"] = formatdate(localtime=True)
         msg["Message-ID"] = make_msgid(domain="news-digest.local")
         msg.set_content(text)                 # plain-text fallback
@@ -29,7 +29,7 @@ class Emailer:
                 with smtplib.SMTP(self.host, self.port, timeout=30) as smtp:
                     smtp.starttls()
                     smtp.login(self.user, self.password)
-                    smtp.send_message(msg)
+                    smtp.send_message(msg, to_addrs=self.to)
                 # Count only: Actions logs of this public repo are readable, addresses must not appear
                 log.info("Email sent to %d recipient(s): %s", len(self.to), subject)
                 return
