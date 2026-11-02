@@ -37,7 +37,7 @@ def test_section_modes():
 
 def test_summary_digest_content():
     d = build_summary_digest([Section("geo", "Geopolitics", stories=[story(), story("Other", single=True)])], TZ)
-    assert d.subject.startswith("🗞 Rates rise · ") and "2 stories" in d.html
+    assert d.subject == "🗞 Rates rise" and "2 stories" in d.html
     assert "Geopolitics" in d.html and "Rates rise" in d.html
     assert 'href="https://bbc.test/1"' in d.html and 'href="https://dw.test/2"' in d.html
     assert d.html.count("single source") == 1
@@ -149,7 +149,7 @@ CURIO = Curiosity(title="War on emus", text="Australia once fought emus.", topic
 
 def test_lead_is_shown_first_and_used_as_subject():
     d = build_summary_digest([Section("eco", "Economy", stories=[story()])], TZ, lead=lead())
-    assert d.subject.startswith("🗞 Truce agreed · ")
+    assert d.subject == "🗞 Truce agreed"
     assert d.html.index("TOP STORY · GEOPOLITICS") < d.html.index("Economy")
     assert "Why it matters:</b> Fighting may stop." in d.html and "2 stories" in d.html
     assert "TOP STORY" in d.text and "Why it matters: Fighting may stop." in d.text
@@ -162,7 +162,7 @@ def test_lead_alone_is_not_nothing_new():
 
 def test_subject_without_lead_uses_first_story():
     d = build_summary_digest([Section("geo", "Geo", stories=[story("First"), story("Second")])], TZ)
-    assert d.subject.startswith("🗞 First · ")
+    assert d.subject == "🗞 First"
 
 
 def test_subject_headlines_only_keeps_count_format():
@@ -181,7 +181,7 @@ def test_preview_text_lists_next_sections_and_skips_the_subject_story():
 
 def test_curiosity_at_the_end_with_built_link():
     d = build_summary_digest([Section("geo", "Geo", stories=[story()])], TZ, curiosity=CURIO)
-    assert d.html.index("DID YOU KNOW?") > d.html.index("Rates rise")
+    assert d.html.index("Did you know?") > d.html.index("Rates rise")
     assert 'href="https://en.wikipedia.org/w/index.php?search=Emu+War"' in d.html
     assert "not from today's news" in d.html
     assert "Learn more: https://en.wikipedia.org/w/index.php?search=Emu+War" in d.text
@@ -202,8 +202,9 @@ def item(title="Truce agreed", key="geo", label="Geopolitics", st=None) -> Updat
 
 def test_update_digest_is_flat_numbered_and_headline_subject():
     d = build_update_digest([item("First"), item("Second", "eco", "Economy")], TZ)
-    assert d.subject.startswith("⚡ First · ") and d.subject.endswith(" update")
-    assert d.html.index("1. First") < d.html.index("2. Second")
+    assert d.subject == "⚡ First"
+    assert d.html.index("First") < d.html.rindex("Second")    # rindex: the teaser also names the second story
+    assert "Two things since this morning." in d.html
     assert "GEOPOLITICS" in d.html and "ECONOMY" in d.html and "2 stories" in d.html
     assert "The full brief comes this evening." in d.html and "DID YOU KNOW" not in d.html
     assert "1. First" in d.text and "2. Second" in d.text and "- DW: https://dw.test/2" in d.text
