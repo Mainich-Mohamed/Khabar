@@ -202,8 +202,9 @@ def item(title="Truce agreed", key="geo", label="Geopolitics", st=None) -> Updat
 
 def test_update_digest_is_flat_numbered_and_headline_subject():
     d = build_update_digest([item("First"), item("Second", "eco", "Economy")], TZ)
-    assert d.subject.startswith("⚡ First · ") and d.subject.endswith(" update")
-    assert d.html.index("1. First") < d.html.index("2. Second")
+    assert d.subject == "⚡ First"
+    assert d.html.index("First") < d.html.rindex("Second")    # rindex: the teaser also names the second story
+    assert "Two things since this morning." in d.html
     assert "GEOPOLITICS" in d.html and "ECONOMY" in d.html and "2 stories" in d.html
     assert "The full brief comes this evening." in d.html and "DID YOU KNOW" not in d.html
     assert "1. First" in d.text and "2. Second" in d.text and "- DW: https://dw.test/2" in d.text
