@@ -449,7 +449,31 @@ def test_pick_lead_rejects_invalid_answers(data):
         summarizer(FakeClient(data)).pick_lead(candidates())
 
 
-SECTIONS = {"geo": "Geopolitics: states and wars", "eco": "Economy: markets", "tech": "Tech & AI: technology"}
+class SequenceClient(FakeClient):
+    """Answers differ per call: dicts are returned, exceptions raised"""
+
+    def __init__(self, answers):
+        super().__init__(None)
+        self.answers = list(answers)
+
+    def generate(self, system, prompt, **kw):
+        self.calls.append((system, prompt))
+        self.kwargs = kw
+        answer = self.answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer, Usage(10, 5)
+
+
+def item(title, topic):
+    return {"title": title, "text": "Some fact.", "topic": topic}
+
+
+def area_of(prompt: str) -> str:
+    return next(a for a in llm.CURIOSITY_AREAS if f"Subject area: {a}." in prompt)
+
+
+SECTIONS ={"geo": "Geopolitics: states and wars", "eco": "Economy: markets", "tech": "Tech & AI: technology"}
 
 
 def placed():
@@ -491,9 +515,10 @@ def test_arrange_missing_story_list_raises():
 
 def test_curiosity_builds_item_and_link():
     client = FakeClient({"title": "War on emus", "text": "Australia once fought emus.", "topic": "Emu War"})
-    c, _ = summarizer(client).curiosity(["Honey never spoils"])
+    c, _ = summarizer(client).curiosity([{"title": "Honey never spoils", "topic": "Honey"}])
     assert c.url == "https://en.wikipedia.org/w/index.php?search=Emu+War"
-    assert "- Honey never spoils" in client.calls[0][1]
+    assert "- Honey never spoils (topic: Honey)" in client.calls[0][1]
+    assert area_of(client.calls[0][1]) in llm.CURIOSITY_AREAS
     assert client.kwargs == {"schema": llm.CURIOSITY_SCHEMA, "temperature": 0.7}
 
 
@@ -506,6 +531,34 @@ def test_curiosity_without_history_sends_no_list():
 def test_curiosity_incomplete_raises():
     with pytest.raises(LLMError, match="incomplete"):
         summarizer(FakeClient({"title": "T", "text": "", "topic": "Y"})).curiosity([])
+
+
+def test_curiosity_retries_when_the_topic_was_used_with_another_subject():
+    client = SequenceClient([item("Otters' Pockets", "sea  OTTER"), item("Honey never spoils", "Honey")])
+    c, usage = summarizer(client).curiosity([{"title": "Secret pocket", "topic": "Sea otter"}])
+    assert c.title == "Honey never spoils" and len(client.calls) == 2
+    assert (usage.input_tokens, usage.output_tokens) == (20, 10)            # both attempts counted
+    assert area_of(client.calls[0][1]) != area_of(client.calls[1][1])
+
+
+def test_curiosity_keeps_the_last_item_when_every_attempt_repeats():
+    client = SequenceClient([item(f"Otter {i}", "Sea otter") for i in range(3)])
+    c, _ = summarizer(client).curiosity([{"title": "Secret pocket", "topic": "Sea otter"}])
+    assert c.title == "Otter 2" and len(client.calls) == llm.CURIOSITY_TRIES
+
+
+def test_curiosity_failed_retry_keeps_the_item_we_have():
+    client = SequenceClient([item("Otters' Pockets", "Sea otter"), LLMError("boom")])
+    c, usage = summarizer(client).curiosity([{"title": "Secret pocket", "topic": "Sea otter"}])
+    assert c.title == "Otters' Pockets" and len(client.calls) == 2
+    assert usage.input_tokens == 10
+
+
+def test_curiosity_history_without_topics_is_accepted():
+    client = FakeClient({"title": "T", "text": "X", "topic": "Y"})
+    c, _ = summarizer(client).curiosity([{"title": "Old item", "topic": None}])
+    assert "- Old item\n" in client.calls[0][1] + "\n" and "(topic" not in client.calls[0][1]
+    assert len(client.calls) == 1
 
 
 def test_gemini_uses_given_schema_and_temperature(mock_client):

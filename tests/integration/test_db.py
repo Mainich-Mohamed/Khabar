@@ -195,13 +195,15 @@ def test_fetch_recent_stories_includes_update_digests(conn):
 
 
 def test_fetch_recent_curiosities_newest_first_within_window(conn):
-    for title, days in [("Old", 20), ("Mid", 3), ("New", 0)]:
-        digest_id = db.save_digest(conn, "summary", "S", {"sections": [], "curiosity": {"title": title}},
+    for title, days in [("Old", 70), ("Mid", 30), ("New", 0)]:
+        digest_id = db.save_digest(conn, "summary", "S",
+                                   {"sections": [], "curiosity": {"title": title, "topic": f"{title} topic"}},
                                    None, 0, 0, [])
         conn.execute("UPDATE digests SET created_at = now() - make_interval(days => %s) WHERE id = %s",
                      (days, digest_id))
     db.save_digest(conn, "summary", "S", {"sections": []}, None, 0, 0, [])     # no curiosity: ignored
-    assert db.fetch_recent_curiosities(conn) == ["New", "Mid"]
+    assert db.fetch_recent_curiosities(conn) == [{"title": "New", "topic": "New topic"},
+                                                 {"title": "Mid", "topic": "Mid topic"}]
 
 # --------------------------------------------------------------------------- mark_sent
 @pytest.mark.parametrize("fetch", FETCHERS)

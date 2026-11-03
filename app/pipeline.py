@@ -27,7 +27,7 @@ class Prepared:
     new_articles: int
     errors: list[str]
     previous: dict[str, list[dict]] = field(default_factory=dict)   # category -> stories sent recently
-    curiosities: list[str] = field(default_factory=list)            # recent "Did you know?" titles
+    curiosities: list[dict] = field(default_factory=list)           # recent "Did you know?" items: title, topic
 
 
 @dataclass
@@ -172,7 +172,7 @@ def arrange_sections(summarizer: Summarizer | None, sections: list[Section], cfg
     return apply_arrangement(sections, placements, cfg.categories), usage
 
 
-def front_page(summarizer: Summarizer | None, sections: list[Section], recent_curiosities: list[str],
+def front_page(summarizer: Summarizer | None, sections: list[Section], recent_curiosities: list[dict],
                errors: list[str]) -> tuple[Lead | None, Curiosity | None, Usage]:
     """Top story (moved out of its section) and the closing curiosity.
     Either can be missing: the digest is sent without it"""

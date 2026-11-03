@@ -103,17 +103,18 @@ def fetch_recent_stories(conn: psycopg.Connection, hours: int = 48) -> dict[str,
     return by_cat
 
 
-def fetch_recent_curiosities(conn: psycopg.Connection, days: int = 14) -> list[str]:
-    """Titles of recent "Did you know?" items, newest first, so the model doesn't repeat itself"""
+def fetch_recent_curiosities(conn: psycopg.Connection, days: int = 60) -> list[dict]:
+    """Recent "Did you know?" items (title and Wikipedia topic), newest first, so the model doesn't repeat them"""
     rows = conn.execute(
         """
-        SELECT payload->'curiosity'->>'title' AS title FROM digests
+        SELECT payload->'curiosity'->>'title' AS title, payload->'curiosity'->>'topic' AS topic
+        FROM digests
         WHERE kind = 'summary' AND created_at > now() - make_interval(days => %s)
         ORDER BY created_at DESC
         """,
         (days,),
     ).fetchall()
-    return [r["title"] for r in rows if r["title"]]
+    return [r for r in rows if r["title"]]
 
 
 def save_lead(conn: psycopg.Connection, article_id: int, lead: str | None, status: str) -> None:

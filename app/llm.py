@@ -5,6 +5,7 @@ itself: the numbers are validated and mapped back to the real URLs here.
 """
 import json
 import logging
+import random
 import re
 import time
 from dataclasses import dataclass, field
@@ -159,8 +160,18 @@ Its job is to make the reader smile or think: a surprising, funny or insightful 
 Strict rules:
 - Only well-established, widely documented facts. If you are not certain a fact is true, pick another one.
 - No exact numbers, dates or quotes unless they are famous and well documented.
-- Do not repeat or closely resemble any of the previous items you are given.
+- Do not repeat or closely resemble any of the previous items you are given, and do not reuse their topics.
 - Write the title and text in {language}. topic is the title of the English Wikipedia article that covers the fact."""
+
+# One subject area is drawn per attempt so the model can't settle on a few favourites (it kept returning
+# sea otters). Animals are just one area among many
+CURIOSITY_AREAS = [
+    "history", "geography and places", "language and words", "mathematics and logic",
+    "the human body and medicine", "space and astronomy", "food and drink", "inventions and technology",
+    "money and economics", "art, music and literature", "animals", "plants and nature",
+    "physics and chemistry", "everyday objects and where they come from",
+]
+CURIOSITY_TRIES = 3     # the first item, plus up to two retries when its topic was already used
 
 CURIOSITY_SCHEMA = {
     "type": "object",
@@ -327,6 +338,17 @@ def parse_arrangement(raw, current: list[str], keys: list[str]) -> list[Placemen
         if same is not None and same < n:      # earlier only: no self-merge, no loops
             placements[n - 1].same_as = same - 1
     return placements
+
+
+def _norm(text) -> str:
+    return " ".join(str(text or "").lower().split())
+
+
+def _curiosity_item(data: dict) -> Curiosity:
+    title, text, topic = (str(data.get(k, "")).strip() for k in ("title", "text", "topic"))
+    if not (title and text and topic):
+        raise LLMError("curiosity call returned an incomplete item")
+    return Curiosity(title, text, topic)
 
 
 def _to_gemini_schema(schema: dict) -> dict:
@@ -537,19 +559,36 @@ class Summarizer:
                  len(stories), moved, merged, usage.input_tokens, usage.output_tokens)
         return placements, usage
 
-    def curiosity(self, previous_titles: list[str]) -> tuple[Curiosity, Usage]:
-        """A general-knowledge "Did you know?" item, different from the recent ones"""
+    def curiosity(self, previous: list[dict]) -> tuple[Curiosity, Usage]:
+        """A general-knowledge "Did you know?" item on a topic not used recently. When the model keeps
+        returning a used topic, the last item is kept anyway: a repeat is better than no item"""
+        used = {_norm(p["topic"]) for p in previous if p.get("topic")}
+        history = "\n".join(f"- {p['title']}" + (f" (topic: {p['topic']})" if p.get("topic") else "")
+                            for p in previous)
         system = CURIOSITY_PROMPT.format(language=self.language)
-        prompt = "Write today's item."
-        if previous_titles:
-            prompt += "\n\nPrevious items (do not repeat):\n" + "\n".join(f"- {t}" for t in previous_titles)
-        # A little more randomness than the news calls, for variety from one email to the next
-        data, usage = self._call(system, prompt, schema=CURIOSITY_SCHEMA, temperature=0.7)
-        title, text, topic = (str(data.get(k, "")).strip() for k in ("title", "text", "topic"))
-        if not (title and text and topic):
-            raise LLMError("curiosity call returned an incomplete item")
-        log.info("Curiosity: %r (%d in / %d out tokens)", title, usage.input_tokens, usage.output_tokens)
-        return Curiosity(title, text, topic), usage
+        areas = random.sample(CURIOSITY_AREAS, CURIOSITY_TRIES)        # distinct: a retry changes the subject
+        total, item = Usage(), None
+        for attempt, area in enumerate(areas, start=1):
+            prompt = f"Write today's item. Subject area: {area}."
+            if history:
+                prompt += "\n\nPrevious items (do not repeat these or reuse their topics):\n" + history
+            try:
+                # A little more randomness than the news calls, for variety from one email to the next
+                data, usage = self._call(system, prompt, schema=CURIOSITY_SCHEMA, temperature=0.7)
+                candidate = _curiosity_item(data)
+            except LLMError:
+                if item is None:
+                    raise
+                break                                                   # a retry failed: keep the item we have
+            total.add(usage)
+            item = candidate
+            log.info("Curiosity: %r [%s] (%d in / %d out tokens)", item.title, area,
+                     usage.input_tokens, usage.output_tokens)
+            if _norm(item.topic) not in used:
+                break
+            log.warning("Curiosity %r repeats the topic %r (attempt %d of %d)",
+                        item.title, item.topic, attempt, CURIOSITY_TRIES)
+        return item, total
 
 
 def make_summarizer(s: Settings) -> Summarizer:
