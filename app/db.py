@@ -22,6 +22,10 @@ SCHEMA_UPGRADES = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_digests_created ON digests (created_at DESC)",
+    # URLs can exceed the btree entry limit (~2.7 KB; Google News links reach 3+ KB), so uniqueness
+    # is enforced on the md5 of the URL. The index must exist before the old constraint is dropped
+    "CREATE UNIQUE INDEX IF NOT EXISTS articles_url_md5_key ON articles (md5(url))",
+    "ALTER TABLE articles DROP CONSTRAINT IF EXISTS articles_url_key",
 ]
 
 
@@ -40,7 +44,7 @@ def insert_article(conn: psycopg.Connection, a: dict) -> bool:
         """
         INSERT INTO articles (source, category, url, title, summary, lang, published_at)
         VALUES (%(source)s, %(category)s, %(url)s, %(title)s, %(summary)s, %(lang)s, %(published_at)s)
-        ON CONFLICT (url) DO NOTHING
+        ON CONFLICT ((md5(url))) DO NOTHING
         RETURNING id
         """,
         a,

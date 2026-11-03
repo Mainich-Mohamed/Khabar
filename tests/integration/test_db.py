@@ -11,6 +11,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+import random
+import string
 
 from app import db
 
@@ -82,6 +84,31 @@ def test_same_url_from_other_source_is_still_a_duplicate(conn):
     db.insert_article(conn, make_row(1))
     assert db.insert_article(conn, make_row(1, source="Other", category="tech")) is False
     assert count(conn) == 1
+
+# --------------------------------------------------------------------------- very long urls
+def long_url(seed: int, length: int = 8000) -> str:
+    """A URL far over the ~2700-byte btree limit. Random, not repeated: Postgres compresses
+    index entries, so 'abc' * 3000 would shrink under the limit and hide the bug"""
+    rng = random.Random(seed)
+    return "https://news.google.com/rss/articles/" + "".join(rng.choices(string.ascii_letters + string.digits, k=length))
+
+def test_insert_article_accepts_very_long_url(conn):
+    big = long_url(1)
+    assert db.insert_article(conn, make_row(1, url=big)) is True
+    assert db.insert_article(conn, make_row(1, url=big, title="Changed")) is False   # still deduped
+    assert conn.execute("SELECT url FROM articles").fetchall() == [{"url": big}]   # stored whole
+
+def test_long_urls_differing_only_at_the_end_are_distinct(conn):
+    base = long_url(2)
+    assert db.insert_article(conn, make_row(1, url=base + "a")) is True
+    assert db.insert_article(conn, make_row(2, url=base + "b")) is True
+    assert count(conn) == 2
+
+def test_url_uniqueness_uses_the_hash_index(conn):
+    names = {r["indexname"] for r in conn.execute(
+        "SELECT indexname FROM pg_indexes WHERE tablename = 'articles'").fetchall()}
+    assert "articles_url_md5_key" in names
+    assert "articles_url_key" not in names        # the old index that broke on long URLs is gone
 
 # --------------------------------------------------------------------------- 24-hour window
 @pytest.mark.parametrize("fetch", FETCHERS)
