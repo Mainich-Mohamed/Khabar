@@ -128,6 +128,29 @@ sources:
         load_sources(path)
 
 
+def test_load_sources_descriptions_optional_with_label_fallback(tmp_path):
+    path = _write(tmp_path, """
+categories: {tech: "Tech", world: "World"}
+descriptions: {tech: "Gadgets and software"}
+sources:
+  - {name: A, category: tech, url: "https://a/rss"}
+""")
+    cfg = load_sources(path)
+    assert cfg.description("tech") == "Gadgets and software"
+    assert cfg.description("world") == "World"                 # no description: the label
+
+
+def test_load_sources_rejects_description_of_undeclared_category(tmp_path):
+    path = _write(tmp_path, """
+categories: {tech: "Tech"}
+descriptions: {ecnomy: "Typo"}
+sources:
+  - {name: A, category: tech, url: "https://a/rss"}
+""")
+    with pytest.raises(ValueError, match="ecnomy"):
+        load_sources(path)
+
+
 def test_shipped_sources_yaml_is_valid():
     cfg = load_sources("config/sources.yaml")
     assert cfg.sources
@@ -137,3 +160,4 @@ def test_shipped_sources_yaml_is_valid():
         assert s.url.startswith("https://"), s.name
         assert 0 < s.weight <= 1, s.name
         assert s.lang in {"en", "fr", "ar"}, s.name
+    assert cfg.descriptions.keys() == cfg.categories.keys(), "every shipped category needs a description"
