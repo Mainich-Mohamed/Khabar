@@ -57,7 +57,6 @@ class Lead:
     key: str               # category of the story
     label: str
     story: Story
-    why_it_matters: str
 
 
 @dataclass
@@ -199,11 +198,10 @@ def build_summary_digest(sections: list[Section], tz: str, fallback_note: bool =
             f'<div style="color:{ON_GREEN};font-size:25px;font-weight:700;line-height:1.22;padding-top:8px">'
             f"{escape(st.title)}</div>"
             f'<div style="{body}">{escape(st.summary)}</div>'
-            f'<div style="{body}"><b>Why it matters:</b> {escape(lead.why_it_matters)}</div>'
             f'<div style="font-size:13px;padding-top:2px">{_sources(st, ON_GREEN)}</div>',
             bg=GREEN, cls="lead", padding="24px 28px 12px",
         ))
-        t += ["TOP STORY", "", f"* {st.title}", f"  {st.summary}", f"  Why it matters: {lead.why_it_matters}"]
+        t += ["TOP STORY", "", f"* {st.title}", f"  {st.summary}"]
         t += [f"  - {s['name']}: {s['url']}" for s in st.sources]
         t.append("")
 
@@ -275,8 +273,7 @@ def build_summary_digest(sections: list[Section], tz: str, fallback_note: bool =
         ],
     }
     if lead:
-        payload["lead"] = {**lead.story.to_dict(), "category": lead.key, "label": lead.label,
-                           "why_it_matters": lead.why_it_matters}
+        payload["lead"] = {**lead.story.to_dict(), "category": lead.key, "label": lead.label}
     if curiosity:
         payload["curiosity"] = curiosity.to_dict()
     return Digest(subject=subject, html=html, text="\n".join(t), payload=payload)

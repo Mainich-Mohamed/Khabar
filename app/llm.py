@@ -100,20 +100,14 @@ STORIES_SCHEMA = {
 EDITOR_PROMPT = """You are the front-page editor of a concise personal news brief.
 
 You receive numbered stories, already selected and summarized, from several categories.
-Pick the ONE story that matters most to the reader today: real-world impact first, then novelty.
-Then write ONE sentence on why it matters.
-
-Strict rules:
-- Use ONLY facts stated in the provided stories. Never add outside knowledge, numbers, or quotes.
-- Write the sentence in {language}."""
+Pick the ONE story that matters most to the reader today: real-world impact first, then novelty."""
 
 LEAD_SCHEMA = {
     "type": "object",
     "properties": {
         "story": {"type": "integer", "description": "Number of the most important story."},
-        "why_it_matters": {"type": "string", "description": "One sentence: why this story matters."},
     },
-    "required": ["story", "why_it_matters"],
+    "required": ["story"],
 }
 
 ARRANGE_PROMPT = """You are the section editor of a concise personal news brief.
@@ -531,17 +525,15 @@ class Summarizer:
                  usage.input_tokens, usage.output_tokens, self.label, self.voice)
         return stories, usage
 
-    def pick_lead(self, candidates: list[tuple[str, Story]]) -> tuple[int, str, Usage]:
-        """Index (0-based) of the most important story across categories, and why it matters"""
-        system = EDITOR_PROMPT.format(language=self.language)
-        data, usage = self._call(system, "Stories:\n\n" + format_candidates(candidates), schema=LEAD_SCHEMA)
+    def pick_lead(self, candidates: list[tuple[str, Story]]) -> tuple[int, Usage]:
+        """Index (0-based) of the most important story across categories"""
+        data, usage = self._call(EDITOR_PROMPT, "Stories:\n\n" + format_candidates(candidates), schema=LEAD_SCHEMA)
         n = _valid_number(data.get("story"), len(candidates))
-        why = str(data.get("why_it_matters", "")).strip()
-        if n is None or not why:
+        if n is None:
             raise LLMError(f"editor returned no valid lead: {str(data)[:200]}")
         log.info("Top story: %r (%d in / %d out tokens)", candidates[n - 1][1].title,
                  usage.input_tokens, usage.output_tokens)
-        return n - 1, why, usage
+        return n - 1, usage
 
     def arrange(self, stories: list[tuple[str, Story]],
                 sections: dict[str, str]) -> tuple[list[Placement], Usage]:

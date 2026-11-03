@@ -141,7 +141,7 @@ def test_build_headlines_follows_category_order_and_skips_empty():
 
 # --------------------------------------------------------------------------- front page
 def lead(title="Truce agreed") -> Lead:
-    return Lead(key="geo", label="Geopolitics", story=story(title), why_it_matters="Fighting may stop.")
+    return Lead(key="geo", label="Geopolitics", story=story(title))
 
 
 CURIO = Curiosity(title="War on emus", text="Australia once fought emus.", topic="Emu War")
@@ -151,8 +151,9 @@ def test_lead_is_shown_first_and_used_as_subject():
     d = build_summary_digest([Section("eco", "Economy", stories=[story()])], TZ, lead=lead())
     assert d.subject == "🗞 Truce agreed"
     assert d.html.index("TOP STORY · GEOPOLITICS") < d.html.index("Economy")
-    assert "Why it matters:</b> Fighting may stop." in d.html and "2 stories" in d.html
-    assert "TOP STORY" in d.text and "Why it matters: Fighting may stop." in d.text
+    assert "The bank raised rates." in d.html and "2 stories" in d.html
+    assert "TOP STORY" in d.text
+    assert "Why it matters" not in d.html and "Why it matters" not in d.text
 
 
 def test_lead_alone_is_not_nothing_new():
@@ -190,7 +191,7 @@ def test_curiosity_at_the_end_with_built_link():
 def test_payload_records_lead_and_curiosity():
     d = build_summary_digest([Section("eco", "Economy", stories=[story()])], TZ, lead=lead(), curiosity=CURIO)
     assert d.payload["lead"]["title"] == "Truce agreed"
-    assert d.payload["lead"]["category"] == "geo" and d.payload["lead"]["why_it_matters"] == "Fighting may stop."
+    assert d.payload["lead"]["category"] == "geo" and "why_it_matters" not in d.payload["lead"]
     assert d.payload["curiosity"]["url"].endswith("Emu+War")
     assert "lead" not in build_summary_digest([], TZ).payload
 

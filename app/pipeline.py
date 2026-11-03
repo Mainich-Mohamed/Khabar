@@ -182,10 +182,10 @@ def front_page(summarizer: Summarizer | None, sections: list[Section], recent_cu
     candidates = [(sec, i) for sec in sections for i in range(len(sec.stories))]
     if candidates:
         try:
-            n, why, u = summarizer.pick_lead([(sec.label, sec.stories[i]) for sec, i in candidates])
+            n, u = summarizer.pick_lead([(sec.label, sec.stories[i]) for sec, i in candidates])
             usage.add(u)
             sec, i = candidates[n]
-            lead = Lead(key=sec.key, label=sec.label, story=sec.stories.pop(i), why_it_matters=why)
+            lead = Lead(key=sec.key, label=sec.label, story=sec.stories.pop(i))
         except LLMError as exc:
             errors.append(f"top story: {exc}")
             log.warning("Picking the top story failed: %s", exc)
