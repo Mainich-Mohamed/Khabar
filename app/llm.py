@@ -116,6 +116,43 @@ LEAD_SCHEMA = {
     "required": ["story", "why_it_matters"],
 }
 
+ARRANGE_PROMPT = """You are the section editor of a concise personal news brief.
+
+You receive the brief's stories, numbered, each with the section it is in now. They were written section
+by section from news feeds, and a feed is filed under one section whatever it reports. So a story can sit in
+the wrong section, and the same event can appear in two sections.
+
+The sections:
+{sections}
+
+For EVERY story return:
+- category: the key of the section it belongs in. Place it by its main subject; if two sections fit, by its
+  main consequence. Keep its current section unless another one is clearly better.
+- same_as: ONLY if it covers the same event as an EARLIER story in the list, that story's number. Otherwise omit it."""
+
+
+def arrange_schema(keys: list[str]) -> dict:
+    """Built per call: the category enum is the configured section keys"""
+    return {
+        "type": "object",
+        "properties": {
+            "stories": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "story": {"type": "integer", "description": "Number of the story."},
+                        "category": {"type": "string", "enum": keys, "description": "Key of its section."},
+                        "same_as": {"type": "integer",
+                                    "description": "Earlier story covering the same event, if any."},
+                    },
+                    "required": ["story", "category"],
+                },
+            }
+        },
+        "required": ["stories"],
+    }
+
 CURIOSITY_PROMPT = """You write the closing "Did you know?" item of a personal news brief.
 Its job is to make the reader smile or think: a surprising, funny or insightful fact on ANY subject
 (science, history, economics, technology, nature, language, culture...). It does not need to relate to the news.
@@ -277,6 +314,30 @@ def parse_stories(raw_stories, articles: list[dict], max_stories: int,
             if kept >= max_stories:
                 break
     return stories
+
+
+@dataclass
+class Placement:
+    category: str                 # section key the story belongs in
+    same_as: int | None = None    # 0-based index of an earlier story covering the same event
+
+
+def parse_arrangement(raw, current: list[str], keys: list[str]) -> list[Placement]:
+    """One placement per story, in input order. Anything missing or invalid keeps the story where it is"""
+    placements = [Placement(c) for c in current]
+    for item in raw if isinstance(raw, list) else []:
+        if not isinstance(item, dict):
+            continue
+        n = _valid_number(item.get("story"), len(current))
+        if n is None:
+            continue
+        category = str(item.get("category", "")).strip()
+        if category in keys:
+            placements[n - 1].category = category
+        same = _valid_number(item.get("same_as"), len(current))
+        if same is not None and same < n:      # earlier only: no self-merge, no loops
+            placements[n - 1].same_as = same - 1
+    return placements
 
 
 def _norm(text) -> str:
@@ -481,6 +542,22 @@ class Summarizer:
         log.info("Top story: %r (%d in / %d out tokens)", candidates[n - 1][1].title,
                  usage.input_tokens, usage.output_tokens)
         return n - 1, why, usage
+
+    def arrange(self, stories: list[tuple[str, Story]],
+                sections: dict[str, str]) -> tuple[list[Placement], Usage]:
+        """Right section for each story, and which ones repeat an earlier story. stories: (section key, story)
+        in brief order; sections: key -> "Label: what belongs there". The model returns numbers and keys only"""
+        keys = list(sections)
+        system = ARRANGE_PROMPT.format(sections="\n".join(f"- {k}: {d}" for k, d in sections.items()))
+        data, usage = self._call(system, "Stories:\n\n" + format_candidates(stories), schema=arrange_schema(keys))
+        if not isinstance(data.get("stories"), list):
+            raise LLMError(f"arrange call returned no story list: {str(data)[:200]}")
+        placements = parse_arrangement(data["stories"], [k for k, _ in stories], keys)
+        moved = sum(p.category != k for p, (k, _) in zip(placements, stories))
+        merged = sum(p.same_as is not None for p in placements)
+        log.info("Arrange: %d stories, %d moved, %d merged (%d in / %d out tokens)",
+                 len(stories), moved, merged, usage.input_tokens, usage.output_tokens)
+        return placements, usage
 
     def curiosity(self, previous: list[dict]) -> tuple[Curiosity, Usage]:
         """A general-knowledge "Did you know?" item on a topic not used recently. When the model keeps

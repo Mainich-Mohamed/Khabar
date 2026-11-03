@@ -4,8 +4,9 @@ import pytest
 
 from app import pipeline
 from app.digest import Section
-from app.llm import Curiosity, LLMError, QuotaExhausted, Story, Usage
-from app.pipeline import Prepared, front_page, rank, run_digest, summarize_sections
+from app.llm import Curiosity, LLMError, Placement, QuotaExhausted, Story, Usage
+from app.pipeline import (Prepared, apply_arrangement, arrange_sections, front_page, rank, run_digest,
+                          summarize_sections)
 
 
 # --------------------------------------------------------------------------- rank
@@ -64,6 +65,17 @@ class FakeSummarizer:
         if isinstance(self.highs, Exception):
             raise self.highs
         return self.highs, Usage(10, 2)
+
+    placements = None   # returned by arrange() (None: every story stays), or an exception to raise
+
+    def arrange(self, stories, sections):
+        self.calls.append("arrange")
+        self.arranged = (stories, sections)
+        if isinstance(self.placements, Exception):
+            raise self.placements
+        if self.placements is None:
+            return [Placement(k) for k, _ in stories], Usage(3, 1)
+        return self.placements, Usage(3, 1)
 
     def curiosity(self, previous):
         self.calls.append("curiosity")
@@ -146,6 +158,86 @@ def test_summarize_sections_moves_repeats_to_dropped(sources_cfg, article, setti
     assert [s.title for s in geo.dropped] == ["Rep"]
     assert tech.stories == [] and [s.title for s in tech.dropped] == ["Only rep"]
     assert not tech.is_fallback and fallbacks == []      # all repeats is not an LLM failure
+
+
+# --------------------------------------------------------------------------- arrange
+LABELS = {"geopolitics": "Geopolitics", "economy": "Economy", "tech": "Tech & AI"}
+
+
+def sourced(title, *names, ids=()) -> Story:
+    return Story(title=title, summary="s", sources=[{"name": n, "url": f"https://{n}/"} for n in names],
+                 single_source=len(names) == 1, article_ids=list(ids))
+
+
+def titles(sections):
+    return {sec.key: [st.title for st in sec.stories] for sec in sections}
+
+
+def test_apply_arrangement_moves_a_story_and_keeps_config_order():
+    secs = [Section("geopolitics", "Geopolitics", stories=[sourced("Hack", "BBC"), sourced("War", "AP")]),
+            Section("tech", "Tech & AI", stories=[sourced("Phone", "Ars")])]
+    out = apply_arrangement(secs, [Placement("tech"), Placement("geopolitics"), Placement("tech")], LABELS)
+    assert titles(out) == {"geopolitics": ["War"], "tech": ["Hack", "Phone"]}
+    assert [s.key for s in out] == ["geopolitics", "tech"]
+
+
+def test_apply_arrangement_merges_duplicates_into_the_earlier_story():
+    secs = [Section("geopolitics", "Geopolitics", stories=[sourced("Hack", "BBC", ids=[1])]),
+            Section("economy", "Economy", stories=[sourced("Exchange robbed", "BBC", "CNBC", ids=[1, 2])])]
+    out = apply_arrangement(secs, [Placement("tech"), Placement("economy", same_as=0)], LABELS)
+    assert titles(out) == {"geopolitics": [], "economy": [], "tech": ["Hack"]}   # tech created, in config order
+    [hack] = out[2].stories
+    assert [s["name"] for s in hack.sources] == ["BBC", "CNBC"]                 # no duplicate outlet
+    assert hack.article_ids == [1, 2] and hack.single_source is False
+
+
+def test_apply_arrangement_follows_merge_chains_to_the_first_story():
+    secs = [Section("tech", "Tech & AI", stories=[sourced("A", "X"), sourced("B", "Y"), sourced("C", "Z")])]
+    out = apply_arrangement(secs, [Placement("tech"), Placement("tech", 0), Placement("tech", 1)], LABELS)
+    assert titles(out) == {"tech": ["A"]}
+    assert [s["name"] for s in out[0].stories[0].sources] == ["X", "Y", "Z"]
+
+
+def test_apply_arrangement_never_moves_into_a_headlines_section(article):
+    secs = [Section("geopolitics", "Geopolitics", headlines=[article(1)]),
+            Section("tech", "Tech & AI", stories=[sourced("Hack", "BBC")])]
+    out = apply_arrangement(secs, [Placement("geopolitics")], LABELS)
+    assert titles(out) == {"geopolitics": [], "tech": ["Hack"]}
+    assert out[0].headlines == [article(1)]
+
+
+def two_stories():
+    return [Section("geopolitics", "Geopolitics", stories=[sourced("Hack", "BBC")]),
+            Section("tech", "Tech & AI", stories=[sourced("Phone", "Ars")])]
+
+
+def test_arrange_sections_sends_described_sections_and_applies_the_answer(sources_cfg):
+    z = FakeSummarizer({})
+    z.placements = [Placement("tech"), Placement("tech")]
+    errors = []
+    out, usage = arrange_sections(z, two_stories(), sources_cfg, errors)
+    assert titles(out) == {"geopolitics": [], "tech": ["Hack", "Phone"]}
+    stories, sections = z.arranged
+    assert [k for k, _ in stories] == ["geopolitics", "tech"]
+    assert sections == {"geopolitics": "Geopolitics: Geopolitics", "tech": "Tech & AI: Tech & AI"}  # no descriptions
+    assert errors == [] and usage.input_tokens == 3
+
+
+def test_arrange_sections_failure_keeps_sections(sources_cfg):
+    z = FakeSummarizer({})
+    z.placements = LLMError("no story list")
+    errors = []
+    out, usage = arrange_sections(z, two_stories(), sources_cfg, errors)
+    assert titles(out) == {"geopolitics": ["Hack"], "tech": ["Phone"]}
+    assert errors == ["arrange: no story list"] and usage.input_tokens == 0
+
+
+def test_arrange_sections_skips_the_call_with_fewer_than_two_stories(sources_cfg):
+    z = FakeSummarizer({})
+    arrange_sections(z, [Section("tech", "Tech & AI", stories=[sourced("Solo", "Ars")])], sources_cfg, [])
+    assert z.calls == []
+    out, _ = arrange_sections(None, two_stories(), sources_cfg, [])
+    assert titles(out) == {"geopolitics": ["Hack"], "tech": ["Phone"]}
 
 
 # --------------------------------------------------------------------------- front_page
@@ -294,6 +386,13 @@ def test_run_digest_preview_sends_and_marks_nothing(wired):
     assert "Geopolitics story" in r.digest.html
 
 
+def test_run_digest_arranges_before_picking_the_lead(wired, monkeypatch):
+    z = FakeSummarizer({"Geopolitics": [status_story("G1"), status_story("G2")]})
+    monkeypatch.setattr(pipeline, "_summarizer_or_none", lambda s: z)
+    run_digest(wired.settings, send=False)
+    assert z.calls == ["Geopolitics", "arrange", "lead", "curiosity"]
+
+
 # --------------------------------------------------------------------------- run_update
 def hl(title, ids, status="new") -> Story:
     return Story(title=title, summary="s", sources=[{"name": "BBC", "url": "https://b/1"}],
@@ -331,6 +430,29 @@ def test_run_update_uses_the_article_category_as_label(updating, monkeypatch, so
     updating.z.highs = [hl("A", [1]), hl("B", [2])]
     r = pipeline.run_update(updating.wired.settings, send=False)
     assert "TECH &amp; AI" in r.digest.html and "GEOPOLITICS" in r.digest.html
+
+
+def test_run_update_section_follows_the_arrange_answer(updating):
+    updating.z.highs = [hl("Hack", [1]), hl("War", [2])]          # both from geopolitics feeds
+    updating.z.placements = [Placement("tech"), Placement("geopolitics")]
+    r = pipeline.run_update(updating.wired.settings, send=False)
+    assert "TECH &amp; AI" in r.digest.html and "GEOPOLITICS" in r.digest.html
+    assert updating.z.calls == ["highlights", "arrange"]
+
+
+def test_run_update_merge_below_minimum_sends_nothing(updating):
+    updating.z.highs = [hl("Hack", [1]), hl("Same hack", [2])]
+    updating.z.placements = [Placement("geopolitics"), Placement("geopolitics", same_as=0)]
+    r = pipeline.run_update(updating.wired.settings, send=True)
+    assert r.digest is None and updating.wired.sent == [] and updating.marked == []
+
+
+def test_run_update_arrange_failure_still_sends(updating):
+    updating.z.highs = [hl("A", [1]), hl("B", [2])]
+    updating.z.placements = LLMError("no story list")
+    r = pipeline.run_update(updating.wired.settings, send=True)
+    assert len(updating.wired.sent) == 1 and updating.marked == [[1, 2]]
+    assert "arrange: no story list" in r.errors
 
 
 def test_run_update_llm_failure_fails_the_run(updating):

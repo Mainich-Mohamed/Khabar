@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import yaml
 from dotenv import load_dotenv
@@ -81,12 +81,17 @@ class Source:
 class SourcesConfig:
     categories: dict[str, str]   # key -> display label, in digest order
     sources: list[Source]
+    descriptions: dict[str, str] = field(default_factory=dict)   # key -> what belongs there (story placement)
 
     def weight(self, source_name: str) -> float:
         for s in self.sources:
             if s.name == source_name:
                 return s.weight
         return 0.5  # source removed from config since the article was stored
+
+    def description(self, key: str) -> str:
+        """What belongs in a category; the label alone when no description is configured"""
+        return self.descriptions.get(key) or self.categories[key]
 
 
 def load_sources(path: str) -> SourcesConfig:
@@ -97,4 +102,8 @@ def load_sources(path: str) -> SourcesConfig:
     unknown = {s.category for s in sources} - categories.keys()
     if unknown:
         raise ValueError(f"sources.yaml uses undeclared categories: {unknown}")
-    return SourcesConfig(categories=categories, sources=sources)
+    descriptions = dict(raw.get("descriptions") or {})
+    stray = descriptions.keys() - categories.keys()
+    if stray:
+        raise ValueError(f"sources.yaml describes undeclared categories: {stray}")
+    return SourcesConfig(categories=categories, sources=sources, descriptions=descriptions)

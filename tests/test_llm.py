@@ -473,6 +473,46 @@ def area_of(prompt: str) -> str:
     return next(a for a in llm.CURIOSITY_AREAS if f"Subject area: {a}." in prompt)
 
 
+SECTIONS ={"geo": "Geopolitics: states and wars", "eco": "Economy: markets", "tech": "Tech & AI: technology"}
+
+
+def placed():
+    return [("geo", Story("Hackers hit exchange", "S1", [], True)),
+            ("eco", Story("Exchange loses billions", "S2", [], True)),
+            ("tech", Story("New phone", "S3", [], True))]
+
+
+def test_arrange_moves_and_merges():
+    client = FakeClient({"stories": [{"story": 1, "category": "tech"},
+                                     {"story": 2, "category": "tech", "same_as": 1},
+                                     {"story": 3, "category": "tech"}]})
+    placements, _ = summarizer(client).arrange(placed(), SECTIONS)
+    assert [(p.category, p.same_as) for p in placements] == [("tech", None), ("tech", 0), ("tech", None)]
+    system, prompt = client.calls[0]
+    assert "- geo: Geopolitics: states and wars" in system
+    assert "[2] Category: eco" in prompt
+    assert client.kwargs["schema"]["properties"]["stories"]["items"]["properties"]["category"]["enum"] == \
+        ["geo", "eco", "tech"]
+
+
+@pytest.mark.parametrize("item", [
+    {"story": 9, "category": "tech"},                # unknown story
+    {"story": 1, "category": "sports"},              # unknown section
+    {"story": 1, "category": "geo", "same_as": 1},   # self-merge
+    {"story": 1, "category": "geo", "same_as": 2},   # merge into a later story
+    {"story": "x"},
+    "not a dict",
+])
+def test_arrange_ignores_invalid_answers(item):
+    placements, _ = summarizer(FakeClient({"stories": [item]})).arrange(placed(), SECTIONS)
+    assert [(p.category, p.same_as) for p in placements] == [("geo", None), ("eco", None), ("tech", None)]
+
+
+def test_arrange_missing_story_list_raises():
+    with pytest.raises(LLMError, match="no story list"):
+        summarizer(FakeClient({})).arrange(placed(), SECTIONS)
+
+
 def test_curiosity_builds_item_and_link():
     client = FakeClient({"title": "War on emus", "text": "Australia once fought emus.", "topic": "Emu War"})
     c, _ = summarizer(client).curiosity([{"title": "Honey never spoils", "topic": "Honey"}])

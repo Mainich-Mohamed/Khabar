@@ -6,6 +6,17 @@ categories:
   engineering: "Software Engineering"
   science: "Science & Engineering"
 
+# What belongs in each category. The model uses these to place each story by its subject,
+# whichever feed reported it. A story goes where its main subject is; when two fit, where
+# its main consequence is. Keys must match categories above
+descriptions:
+  geopolitics: "Relations between states and world politics: wars, diplomacy, sanctions, elections, terrorism, national security. Includes cyberattacks, tech or economic events when a state or national security is at the heart of the story."
+  morocco: "Any story where Morocco, Moroccan institutions or Moroccans are the main subject, whatever the topic (politics, economy, society, sport, tech)."
+  economy: "Markets, central banks, trade, jobs, prices, and companies' finances: earnings, deals, layoffs, funding rounds, bankruptcies."
+  tech: "Technology products and the tech industry: AI, consumer devices, platforms, cybersecurity incidents, crypto, big-tech moves and regulation of tech."
+  engineering: "Software engineering for practitioners: languages, tools, architecture, open source, DevOps, engineering practices and careers."
+  science: "Research and discoveries: physics, biology, medicine, climate, space, and research advances in engineering and materials."
+
 sources:
   # Geopolitical News
   - {name: Reuters, category: geopolitics, lang: en, weight: 1.0, url: "https://news.google.com/rss/search?q=site:reuters.com/world&hl=en-US&gl=US&ceid=US:en"}
