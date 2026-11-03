@@ -9,7 +9,7 @@ from app.digest import Digest, Lead, Section, UpdateItem, build_summary_digest, 
 from app.emailer import Emailer
 from app.extract import extract_leads
 from app.ingest import ingest_all
-from app.llm import Curiosity, LLMError, QuotaExhausted, Summarizer, Usage, make_summarizer
+from app.llm import Curiosity, LLMError, Placement, QuotaExhausted, Story, Summarizer, Usage, make_summarizer
 
 log = logging.getLogger(__name__)
 
@@ -98,6 +98,66 @@ def summarize_sections(summarizer: Summarizer | None, p: Prepared, s: Settings,
     return sections, usage, fallbacks
 
 
+def _placeable(sections: list[Section]) -> list[tuple[str, Story]]:
+    """Stories the arrange call may move, in brief order. Headline-fallback sections take no part"""
+    return [(sec.key, st) for sec in sections for st in sec.stories]
+
+
+def _merge(into: Story, other: Story) -> None:
+    """Fold a duplicate into the story that stays: its text is kept, sources and article ids are pooled"""
+    names = {src["name"] for src in into.sources}
+    into.sources += [src for src in other.sources if src["name"] not in names]
+    into.article_ids += [i for i in other.article_ids if i not in into.article_ids]
+    into.single_source = len(into.sources) == 1
+
+
+def apply_arrangement(sections: list[Section], placements: list[Placement],
+                      labels: dict[str, str]) -> list[Section]:
+    """Move each story to its section and fold duplicates into the earlier story. Returns the sections in
+    config order; a section the stories moved into is created if it had no articles today"""
+    flat = _placeable(sections)
+    by_key = {sec.key: sec for sec in sections}
+    fallback = {sec.key for sec in sections if sec.headlines}
+    moved: dict[str, list[Story]] = {}
+    for i, (key, st) in enumerate(flat):
+        root = i
+        while placements[root].same_as is not None:     # ends: same_as always points to an earlier story
+            root = placements[root].same_as
+        if root != i:
+            _merge(flat[root][1], st)
+            continue
+        target = placements[i].category
+        if target in fallback:                          # can't mix stories into a headlines-only section
+            target = key
+        moved.setdefault(target, []).append(st)
+    result = []
+    for key, label in labels.items():
+        sec = by_key.get(key)
+        if sec is not None:
+            sec.stories = moved.get(key, [])
+            result.append(sec)
+        elif moved.get(key):
+            result.append(Section(key=key, label=label, stories=moved[key]))
+    return result
+
+
+def arrange_sections(summarizer: Summarizer | None, sections: list[Section], cfg: SourcesConfig,
+                     errors: list[str]) -> tuple[list[Section], Usage]:
+    """One call over the whole brief: each story to the section of its subject, duplicates merged.
+    Optional: on failure the sections are kept as the per-category calls made them"""
+    stories = _placeable(sections)
+    if summarizer is None or len(stories) < 2:
+        return sections, Usage()
+    described = {k: f"{label}: {cfg.description(k)}" for k, label in cfg.categories.items()}
+    try:
+        placements, usage = summarizer.arrange(stories, described)
+    except LLMError as exc:
+        errors.append(f"arrange: {exc}")
+        log.warning("Arranging stories failed, keeping sections as they are: %s", exc)
+        return sections, Usage()
+    return apply_arrangement(sections, placements, cfg.categories), usage
+
+
 def front_page(summarizer: Summarizer | None, sections: list[Section], recent_curiosities: list[str],
                errors: list[str]) -> tuple[Lead | None, Curiosity | None, Usage]:
     """Top story (moved out of its section) and the closing curiosity.
@@ -147,6 +207,8 @@ def run_digest(s: Settings, send: bool = True) -> RunResult:
 
     errors = list(p.errors)
     sections, usage, fallbacks = summarize_sections(summarizer, p, s, errors)
+    sections, arrange_usage = arrange_sections(summarizer, sections, p.cfg, errors)
+    usage.add(arrange_usage)
     lead, curiosity, front_usage = front_page(summarizer, sections, p.curiosities, errors)
     usage.add(front_usage)
     digest = build_summary_digest(sections, s.timezone, lead=lead, curiosity=curiosity)
