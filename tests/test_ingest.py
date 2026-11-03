@@ -145,3 +145,17 @@ def test_ingest_all_one_bad_feed_does_not_stop_the_run(monkeypatch):
     assert new == 2
     assert inserted == ["u1", "u2", "u3"]
     assert errors == ["Bad: ValueError: unparseable feed"]
+
+
+def test_ingest_all_one_bad_article_does_not_lose_the_rest_of_the_feed(monkeypatch):
+    src = Source(name="Feed", url="https://feed/rss", category="tech")
+    monkeypatch.setattr("app.ingest.fetch_feed", lambda client, s: [{"url": "u1"}, {"url": "u2"}, {"url": "u3"}])
+
+    def insert(conn, a):
+        if a["url"] == "u2":
+            raise RuntimeError("index row too big")
+        return True
+
+    new, errors = ingest_all(None, [src], insert)
+    assert new == 2                                    # u1 and u3 survived
+    assert errors == ["Feed (u2): RuntimeError: index row too big"]

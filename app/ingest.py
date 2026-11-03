@@ -83,18 +83,28 @@ def make_client() -> httpx.Client:
     return httpx.Client(headers=HEADERS, timeout=20, follow_redirects=True)
 
 
+def _record_failure(errors: list[str], what: str, exc: Exception) -> None:
+    msg = f"{what}: {type(exc).__name__}: {exc}"
+    errors.append(msg)
+    log.warning("FAILED %s", msg)
+
+
 def ingest_all(conn, sources: list[Source], insert) -> tuple[int, list[str]]:
-    """Fetch every source and store new articles. One bad feed never stops the run"""
+    """Fetch every source and store new articles. One bad feed, or one bad article, never stops the run"""
     total_new, errors = 0, []
     with make_client() as client:
         for src in sources:
             try:
                 items = fetch_feed(client, src)
-                new = sum(insert(conn, a) for a in items)
-                total_new += new
-                log.info("%-18s %3d items, %3d new", src.name, len(items), new)
-            except Exception as exc:  # noqa: BLE001 - log and continue
-                msg = f"{src.name}: {type(exc).__name__}: {exc}"
-                errors.append(msg)
-                log.warning("FAILED %s", msg)
+            except Exception as exc:  # log and go to the next feed
+                _record_failure(errors, src.name, exc)
+                continue
+            new = 0
+            for a in items:
+                try:
+                    new += insert(conn, a)
+                except Exception as exc:  # skip this article, keep the rest of the feed
+                    _record_failure(errors, f"{src.name} ({a['url'][:80]})", exc)   # URLs can be huge: truncate
+            total_new += new
+            log.info("%-18s %3d items, %3d new", src.name, len(items), new)
     return total_new, errors
