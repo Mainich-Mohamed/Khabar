@@ -98,7 +98,7 @@ def summarize_sections(summarizer: Summarizer | None, p: Prepared, s: Settings,
     return sections, usage, fallbacks
 
 
-def front_page(summarizer: Summarizer | None, sections: list[Section], recent_curiosities: list[str],
+def front_page(summarizer: Summarizer | None, sections: list[Section], recent_curiosities: list[dict],
                errors: list[str]) -> tuple[Lead | None, Curiosity | None, Usage]:
     """Top story (moved out of its section) and the closing curiosity.
     Either can be missing: the digest is sent without it"""
