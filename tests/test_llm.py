@@ -429,19 +429,20 @@ def test_format_candidates_numbers_from_one():
     assert "[2] Category: Economy" in out
 
 
-def test_pick_lead_returns_index_and_reason():
-    client = FakeClient({"story": 2, "why_it_matters": "Loans get dearer."})
-    i, why, _ = summarizer(client).pick_lead(candidates())
-    assert (i, why) == (1, "Loans get dearer.")
-    assert "in French" in client.calls[0][0] and "[2] Category: Economy" in client.calls[0][1]
+def test_pick_lead_returns_index():
+    client = FakeClient({"story": 2})
+    i, _ = summarizer(client).pick_lead(candidates())
+    assert i == 1
+    assert "[2] Category: Economy" in client.calls[0][1]
     assert client.kwargs["schema"] is llm.LEAD_SCHEMA
+    assert list(llm.LEAD_SCHEMA["properties"]) == ["story"]          # no "why it matters" sentence
 
 
 @pytest.mark.parametrize("data", [
-    {"story": 3, "why_it_matters": "x"},     # hallucinated story number
-    {"story": 0, "why_it_matters": "x"},
-    {"story": 1, "why_it_matters": " "},
-    {"why_it_matters": "x"},
+    {"story": 3},                            # hallucinated story number
+    {"story": 0},
+    {"story": "x"},
+    {"why_it_matters": "x"},                 # no story number
     {},
 ])
 def test_pick_lead_rejects_invalid_answers(data):

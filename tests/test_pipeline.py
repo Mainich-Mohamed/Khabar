@@ -56,7 +56,7 @@ class FakeSummarizer:
         self.calls.append("lead")
         if isinstance(self.lead, Exception):
             raise self.lead
-        return self.lead, "why", Usage(1, 1)
+        return self.lead, Usage(1, 1)
 
     highs = None      # stories returned by highlights(), or an exception to raise
 
@@ -251,7 +251,7 @@ def test_front_page_moves_the_lead_out_of_its_section():
     z.lead = 2                                  # third candidate: the tech story
     secs, errors = two_sections(), []
     lead, curio, usage = front_page(z, secs, ["Old fact"], errors)
-    assert (lead.story.title, lead.key, lead.why_it_matters) == ("T1", "tech", "why")
+    assert (lead.story.title, lead.key) == ("T1", "tech")
     assert secs[1].stories == [] and [s.title for s in secs[0].stories] == ["G1", "G2"]
     assert curio.title == "Fact" and errors == [] and usage.input_tokens == 2
 
