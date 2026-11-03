@@ -214,12 +214,12 @@ def test_prepare_loads_history_with_lookback(monkeypatch, sources_cfg, article, 
     monkeypatch.setattr(pipeline, "extract_leads", lambda conn, arts, save: None)
     monkeypatch.setattr(pipeline, "db", SimpleNamespace(
         insert_article=None, save_lead=None, fetch_recent_stories=fetch_recent_stories,
-        fetch_recent_curiosities=lambda conn: ["Old fact"],
+        fetch_recent_curiosities=lambda conn: [{"title": "Old fact", "topic": "Old"}],
         fetch_all_unsent=lambda conn: [article(1, category="tech")]))
     p = pipeline.prepare(None, settings, cap=5)
     assert seen["hours"] == 48
     assert p.previous == {"tech": [{"title": "Old", "summary": None}]}
-    assert p.curiosities == ["Old fact"]
+    assert p.curiosities == [{"title": "Old fact", "topic": "Old"}]
 
 
 # --------------------------------------------------------------------------- run_digest (DB/email/LLM faked)

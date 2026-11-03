@@ -27,7 +27,7 @@ class Prepared:
     new_articles: int
     errors: list[str]
     previous: dict[str, list[dict]] = field(default_factory=dict)   # category -> stories sent recently
-    curiosities: list[str] = field(default_factory=list)            # recent "Did you know?" titles
+    curiosities: list[dict] = field(default_factory=list)           # recent "Did you know?" items: title, topic
 
 
 @dataclass
