@@ -111,14 +111,11 @@ def _merge(into: Story, other: Story) -> None:
     into.single_source = len(into.sources) == 1
 
 
-def apply_arrangement(sections: list[Section], placements: list[Placement],
-                      labels: dict[str, str]) -> list[Section]:
-    """Move each story to its section and fold duplicates into the earlier story. Returns the sections in
-    config order; a section the stories moved into is created if it had no articles today"""
-    flat = _placeable(sections)
-    by_key = {sec.key: sec for sec in sections}
-    fallback = {sec.key for sec in sections if sec.headlines}
-    moved: dict[str, list[Story]] = {}
+def _resolve(flat: list[tuple[str, Story]], placements: list[Placement],
+             keep: set[str] = frozenset()) -> list[tuple[str, Story]]:
+    """Apply the arrange answer to (key, story) pairs, order kept: duplicates fold into the earlier story,
+    the others take their new key. Stories aimed at a key in `keep` stay where they are"""
+    out = []
     for i, (key, st) in enumerate(flat):
         root = i
         while placements[root].same_as is not None:     # ends: same_as always points to an earlier story
@@ -127,9 +124,33 @@ def apply_arrangement(sections: list[Section], placements: list[Placement],
             _merge(flat[root][1], st)
             continue
         target = placements[i].category
-        if target in fallback:                          # can't mix stories into a headlines-only section
-            target = key
-        moved.setdefault(target, []).append(st)
+        out.append((key if target in keep else target, st))
+    return out
+
+
+def _arrange_call(summarizer: Summarizer | None, flat: list[tuple[str, Story]], cfg: SourcesConfig,
+                  errors: list[str]) -> tuple[list[Placement] | None, Usage]:
+    """The arrange call, or None when skipped (under 2 stories, no LLM) or failed: callers keep what they have"""
+    if summarizer is None or len(flat) < 2:
+        return None, Usage()
+    described = {k: f"{label}: {cfg.description(k)}" for k, label in cfg.categories.items()}
+    try:
+        return summarizer.arrange(flat, described)
+    except LLMError as exc:
+        errors.append(f"arrange: {exc}")
+        log.warning("Arranging stories failed, keeping them where they are: %s", exc)
+        return None, Usage()
+
+
+def apply_arrangement(sections: list[Section], placements: list[Placement],
+                      labels: dict[str, str]) -> list[Section]:
+    """Move each story to its section and fold duplicates into the earlier story. Returns the sections in
+    config order; a section the stories moved into is created if it had no articles today"""
+    by_key = {sec.key: sec for sec in sections}
+    fallback = {sec.key for sec in sections if sec.headlines}   # can't mix stories into a headlines-only section
+    moved: dict[str, list[Story]] = {}
+    for key, st in _resolve(_placeable(sections), placements, keep=fallback):
+        moved.setdefault(key, []).append(st)
     result = []
     for key, label in labels.items():
         sec = by_key.get(key)
@@ -145,16 +166,9 @@ def arrange_sections(summarizer: Summarizer | None, sections: list[Section], cfg
                      errors: list[str]) -> tuple[list[Section], Usage]:
     """One call over the whole brief: each story to the section of its subject, duplicates merged.
     Optional: on failure the sections are kept as the per-category calls made them"""
-    stories = _placeable(sections)
-    if summarizer is None or len(stories) < 2:
-        return sections, Usage()
-    described = {k: f"{label}: {cfg.description(k)}" for k, label in cfg.categories.items()}
-    try:
-        placements, usage = summarizer.arrange(stories, described)
-    except LLMError as exc:
-        errors.append(f"arrange: {exc}")
-        log.warning("Arranging stories failed, keeping sections as they are: %s", exc)
-        return sections, Usage()
+    placements, usage = _arrange_call(summarizer, _placeable(sections), cfg, errors)
+    if placements is None:
+        return sections, usage
     return apply_arrangement(sections, placements, cfg.categories), usage
 
 
@@ -247,16 +261,20 @@ def run_update(s: Settings, send: bool = True) -> RunResult:
     previous = [st for stories in p.previous.values() for st in stories]
     stories, usage = summarizer.highlights(pool, previous, MAX_UPDATE_STORIES) if pool else ([], Usage())
     shown = [st for st in stories if st.status != "repeat"]
+    category = {a["id"]: a["category"] for a in pool}
+    pairs = [(category[st.article_ids[0]], st) for st in shown]        # feed category: the starting point
+    placements, arrange_usage = _arrange_call(summarizer, pairs, p.cfg, p.errors)
+    usage.add(arrange_usage)
+    if placements is not None:
+        pairs = _resolve(pairs, placements)
 
     digest, marked = None, []
-    if len(shown) >= MIN_UPDATE_STORIES:
-        category = {a["id"]: a["category"] for a in pool}
-        items = [UpdateItem(key, p.cfg.categories.get(key, key), st)
-                 for st in shown for key in [category[st.article_ids[0]]]]
+    if len(pairs) >= MIN_UPDATE_STORIES:
+        items = [UpdateItem(key, p.cfg.categories.get(key, key), st) for key, st in pairs]
         digest = build_update_digest(items, s.timezone)
-        marked = sorted({i for st in shown for i in st.article_ids})
+        marked = sorted({i for _, st in pairs for i in st.article_ids})
     else:
-        log.info("No update sent: %d stories worth showing (minimum %d)", len(shown), MIN_UPDATE_STORIES)
+        log.info("No update sent: %d stories worth showing (minimum %d)", len(pairs), MIN_UPDATE_STORIES)
 
     # Reconnect: the first connection sat idle during the LLM call (see run_digest)
     with db.connect(s.database_url) as conn:
@@ -268,5 +286,5 @@ def run_update(s: Settings, send: bool = True) -> RunResult:
         db.finish_run(conn, run_id, p.new_articles, len(marked) if send else 0, p.errors)
 
     log.info("Update built [%s]: %d articles considered, %d stories shown, %d in / %d out tokens",
-             summarizer.label, len(pool), len(shown), usage.input_tokens, usage.output_tokens)
+             summarizer.label, len(pool), len(pairs), usage.input_tokens, usage.output_tokens)
     return RunResult(digest, p.new_articles, len(pool), usage, list(p.errors))

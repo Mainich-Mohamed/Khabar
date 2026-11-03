@@ -432,6 +432,29 @@ def test_run_update_uses_the_article_category_as_label(updating, monkeypatch, so
     assert "TECH &amp; AI" in r.digest.html and "GEOPOLITICS" in r.digest.html
 
 
+def test_run_update_section_follows_the_arrange_answer(updating):
+    updating.z.highs = [hl("Hack", [1]), hl("War", [2])]          # both from geopolitics feeds
+    updating.z.placements = [Placement("tech"), Placement("geopolitics")]
+    r = pipeline.run_update(updating.wired.settings, send=False)
+    assert "TECH &amp; AI" in r.digest.html and "GEOPOLITICS" in r.digest.html
+    assert updating.z.calls == ["highlights", "arrange"]
+
+
+def test_run_update_merge_below_minimum_sends_nothing(updating):
+    updating.z.highs = [hl("Hack", [1]), hl("Same hack", [2])]
+    updating.z.placements = [Placement("geopolitics"), Placement("geopolitics", same_as=0)]
+    r = pipeline.run_update(updating.wired.settings, send=True)
+    assert r.digest is None and updating.wired.sent == [] and updating.marked == []
+
+
+def test_run_update_arrange_failure_still_sends(updating):
+    updating.z.highs = [hl("A", [1]), hl("B", [2])]
+    updating.z.placements = LLMError("no story list")
+    r = pipeline.run_update(updating.wired.settings, send=True)
+    assert len(updating.wired.sent) == 1 and updating.marked == [[1, 2]]
+    assert "arrange: no story list" in r.errors
+
+
 def test_run_update_llm_failure_fails_the_run(updating):
     updating.z.highs = LLMError("boom")
     with pytest.raises(LLMError):
