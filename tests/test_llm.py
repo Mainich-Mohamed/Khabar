@@ -630,3 +630,29 @@ def test_expert_prompt_schema_and_temperature():
 def test_make_summarizer_model_override(settings):
     assert make_summarizer(settings, settings.gemini_weekly_model).label == "gemini:gemini-weekly-test"
     assert make_summarizer(settings).label == "gemini:gemini-test"
+
+
+# --------------------------------------------------------------------------- weekly overview
+def analysis(title="T", paragraphs=("P1", "P2")) -> llm.Analysis:
+    return llm.Analysis(title=title, paragraphs=list(paragraphs), references=[])
+
+
+def test_format_analyses_labels_each_section():
+    out = llm.format_analyses([("Economy", analysis("Rates bite")), ("Tech & AI", analysis("Chips"))])
+    assert out.startswith("[Economy] Rates bite\nP1\nP2")
+    assert "\n\n[Tech & AI] Chips\n" in out
+
+
+def test_overview_prompt_schema_and_result():
+    client = FakeClient({"intro": " The week. ", "subject": " A subject "})
+    ov, usage = summarizer(client).overview([("Economy", analysis())])
+    system, prompt = client.calls[0]
+    assert "in French" in system and prompt.startswith("Analyses:\n\n[Economy] T")
+    assert client.kwargs == {"schema": llm.OVERVIEW_SCHEMA, "temperature": 0.4}
+    assert (ov.intro, ov.subject) == ("The week.", "A subject") and usage.output_tokens == 5
+
+
+@pytest.mark.parametrize("data", [{"intro": "x"}, {"subject": "x"}, {"intro": " ", "subject": "x"}, {}])
+def test_overview_incomplete_raises(data):
+    with pytest.raises(LLMError, match="no intro or subject"):
+        summarizer(FakeClient(data)).overview([("Economy", analysis())])

@@ -209,6 +209,26 @@ ANALYSIS_SCHEMA = {
 }
 MAX_REFERENCES = 6      # the "Based on" list under each analysis
 
+OVERVIEW_PROMPT = """You are the editor-in-chief of the "Khabar Artificial Expert", a weekly analysis for a
+reader who followed the daily news briefs all week. Your experts have each analysed their field; their
+analyses are below. Write in {language}:
+- intro: ONE paragraph of 80 to 100 words on what this week was really about. Where the analyses show a
+  real link between fields (an economic move driven by a geopolitical one, a technology shaping a market...),
+  make it explicit. Do not summarise the sections one after another.
+- subject: the email subject, max 10 words, built on the week's main thread. No clickbait, no questions,
+  no exclamation marks.
+
+Strict rule: use only what the analyses say. Do not add events, numbers or names."""
+
+OVERVIEW_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "intro": {"type": "string", "description": "One paragraph, 80 to 100 words."},
+        "subject": {"type": "string", "description": "Email subject, max 10 words."},
+    },
+    "required": ["intro", "subject"],
+}
+
 
 class LLMError(RuntimeError):
     """Any provider failure. The summarizer moves on to the next provider, then to headlines"""
@@ -272,6 +292,12 @@ class Analysis:
         return {"title": self.title, "paragraphs": self.paragraphs, "references": self.references}
 
 
+@dataclass
+class Overview:
+    intro: str
+    subject: str
+
+
 # --------------------------------------------------------------------------- helpers
 def format_articles(articles: list[dict], lead_chars: int = 900) -> str:
     blocks = []
@@ -305,6 +331,11 @@ def format_week_stories(stories: list[dict]) -> str:
             head += f" | Update of: {st['previous_title']}"
         blocks.append(f"{head}\nTitle: {st['title']}\nSummary: {st['summary']}")
     return "\n\n".join(blocks)
+
+
+def format_analyses(analyses: list[tuple[str, Analysis]]) -> str:
+    """The section analyses, labelled, for the editor-in-chief"""
+    return "\n\n".join(f"[{label}] {a.title}\n" + "\n".join(a.paragraphs) for label, a in analyses)
 
 
 def parse_json_text(text: str) -> dict:
@@ -666,6 +697,17 @@ class Summarizer:
                  label, len(stories), analysis.words, len(analysis.references),
                  usage.input_tokens, usage.output_tokens, self.label)
         return analysis, usage
+
+    def overview(self, analyses: list[tuple[str, Analysis]]) -> tuple[Overview, Usage]:
+        """The weekly email's opening paragraph and subject, written from the finished section analyses"""
+        system = OVERVIEW_PROMPT.format(language=self.language)
+        data, usage = self._call(system, "Analyses:\n\n" + format_analyses(analyses),
+                                 schema=OVERVIEW_SCHEMA, temperature=0.4)
+        intro, subject = (data.get("intro") or "").strip(), (data.get("subject") or "").strip()
+        if not intro or not subject:
+            raise LLMError(f"overview returned no intro or subject: {str(data)[:200]}")
+        log.info("Overview: %r (%d in / %d out tokens)", subject, usage.input_tokens, usage.output_tokens)
+        return Overview(intro=intro, subject=subject), usage
 
 
 def make_summarizer(s: Settings, model: str | None = None) -> Summarizer:
