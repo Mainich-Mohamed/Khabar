@@ -1,3 +1,5 @@
+from dataclasses import replace
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -480,10 +482,11 @@ class FakeExpert:
     label = "fake-weekly"
 
     def __init__(self, behaviour: dict, overview=None):
-        self.behaviour, self.overview_result, self.calls = behaviour, overview, []
+        self.behaviour, self.overview_result, self.calls, self.counts = behaviour, overview, [], []
 
     def expert(self, label, description, stories):
         self.calls.append(label)
+        self.counts.append(len(stories))
         result = self.behaviour.get(label)
         if isinstance(result, Exception):
             raise result
@@ -497,29 +500,34 @@ class FakeExpert:
 
 
 def week_of(n: int) -> list[dict]:
-    return [{"title": f"S{i}", "summary": "s", "sources": [], "status": "new", "previous_title": None}
-            for i in range(n)]
+    return [{"title": f"S{i}", "summary": "s", "sources": [], "status": "new", "previous_title": None,
+             "sent_at": datetime(2026, 11, 2 + i, 7, tzinfo=timezone.utc)} for i in range(n)]
 
 
 @pytest.fixture
 def weekly(wired, monkeypatch, sources_cfg):
-    z, models, saved = FakeExpert({}), [], []
+    z, saved = FakeExpert({}), []
     monkeypatch.setattr(pipeline, "load_sources", lambda path: sources_cfg)
-    monkeypatch.setattr(pipeline, "make_summarizer", lambda s, model=None: models.append(model) or z)
+    monkeypatch.setattr(pipeline, "make_weekly_summarizer", lambda s: z)
     wired.db.fetch_week_stories = lambda conn: {"geopolitics": week_of(5), "tech": week_of(3)}
     wired.db.digest_sent_within = lambda conn, kind, hours: False
     wired.db.save_digest = lambda conn, kind, *a: saved.append(kind)
-    return SimpleNamespace(wired=wired, z=z, models=models, saved=saved, s=wired.settings)
+    return SimpleNamespace(wired=wired, z=z, saved=saved, s=wired.settings)
 
 
 def test_run_weekly_sends_one_analysis_per_section(weekly):
     r = pipeline.run_weekly(weekly.s, send=True)
     assert weekly.z.calls == ["Geopolitics", "Tech & AI", "overview"]
-    assert weekly.models == ["gemini-weekly-test"]
+    assert weekly.z.counts == [5, 3]
     assert len(weekly.wired.sent) == 1 and r.digest.subject == "🧠 Week subject"
     assert weekly.saved == ["weekly"] and "finish_run" in weekly.wired.db.calls
     assert "mark_sent" not in weekly.wired.db.calls
     assert r.considered == 8 and r.usage.input_tokens == 45
+
+
+def test_run_weekly_sends_only_the_recent_stories_that_fit(weekly):
+    pipeline.run_weekly(replace(weekly.s, weekly_max_chars=1), send=True)
+    assert weekly.z.counts == [1, 1]
 
 
 def test_run_weekly_skips_sections_with_too_few_stories(weekly):

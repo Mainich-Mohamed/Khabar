@@ -10,7 +10,8 @@ from app.digest import (Digest, Lead, Section, UpdateItem, WeeklySection, build_
 from app.emailer import Emailer
 from app.extract import extract_leads
 from app.ingest import ingest_all
-from app.llm import Curiosity, LLMError, Placement, QuotaExhausted, Story, Summarizer, Usage, make_summarizer
+from app.llm import (Curiosity, LLMError, Placement, QuotaExhausted, Story, Summarizer, Usage, fit_week_stories,
+                     make_summarizer, make_weekly_summarizer)
 
 log = logging.getLogger(__name__)
 
@@ -295,10 +296,10 @@ def run_update(s: Settings, send: bool = True) -> RunResult:
 
 def run_weekly(s: Settings, send: bool = True) -> RunResult:
     """The Sunday "Khabar Artificial Expert": one analysis per section from the stories sent this week, with
-    GEMINI_WEEKLY_MODEL. Nothing is ingested or marked. A failed section is skipped and a failed overview only
+    WEEKLY_MODEL. Nothing is ingested or marked. A failed section is skipped and a failed overview only
     loses the opening paragraph; if no section succeeds the run fails and nothing is sent"""
     emailer = make_emailer(s) if send else None
-    summarizer = make_summarizer(s, s.gemini_weekly_model)   # raises LLMError without an API key
+    summarizer = make_weekly_summarizer(s)   # raises LLMError without WEEKLY_API_KEY
     cfg = load_sources(s.sources_path)
 
     with db.connect(s.database_url) as conn:
@@ -315,8 +316,12 @@ def run_weekly(s: Settings, send: bool = True) -> RunResult:
         if len(stories) < WEEKLY_MIN_STORIES:
             log.info("Weekly: skipping %s (%d stories this week)", label, len(stories))
             continue
+        kept = fit_week_stories(stories, s.weekly_max_chars)
+        if len(kept) < len(stories):
+            log.info("Weekly: %s keeps its %d most recent stories of %d (WEEKLY_MAX_CHARS)",
+                     label, len(kept), len(stories))
         try:
-            analysis, u = summarizer.expert(label, cfg.description(key), stories)
+            analysis, u = summarizer.expert(label, cfg.description(key), kept)
         except LLMError as exc:
             errors.append(f"expert {key}: {exc}")
             log.warning("Weekly analysis of %s failed, skipping the section: %s", label, exc)
