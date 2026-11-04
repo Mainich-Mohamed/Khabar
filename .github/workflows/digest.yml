@@ -2,14 +2,14 @@ name: Digest
 
 on:
   # Triggered by 'khabar-trigger' Cloudflare Worker to avoid GitHub cron delays
-  # (07:00 and 20:00 UTC: full brief, 16:00 UTC: short update).
+  # (07:00 and 20:00 UTC: full brief, 16:00 UTC: short update, Sunday 20:30 UTC: weekly analysis).
   workflow_dispatch:
     inputs:
       command:
         description: "What to run"
         type: choice
         default: check-feeds
-        options: [check-feeds, preview, preview-update, run, update]
+        options: [check-feeds, preview, preview-update, preview-weekly, run, update, weekly]
 
 concurrency:
   group: digest          # never two digests at once
@@ -61,7 +61,7 @@ jobs:
         env:
           HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
         run: curl -fsS -m 10 --retry 3 "$HEALTHCHECK_URL/fail"
-      - if: inputs.command == 'preview' || inputs.command == 'preview-update'
+      - if: inputs.command == 'preview' || inputs.command == 'preview-update' || inputs.command == 'preview-weekly'
         uses: actions/upload-artifact@v6
         with:
           name: preview
