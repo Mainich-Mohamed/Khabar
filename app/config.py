@@ -28,7 +28,12 @@ class Settings:
     gemini_lead_chars: int
     gemini_interval: float         # seconds between calls (free tier per-minute limit)
     update_lookback_hours: int     # sent stories this recent are compared with new ones (updates/repeats)
-    gemini_weekly_model: str       # the Sunday expert analysis: a stronger model than the daily briefs
+    # The Sunday expert analysis runs on an OpenAI-compatible provider (Groq), separate from the daily briefs
+    weekly_base_url: str
+    weekly_api_key: str
+    weekly_model: str
+    weekly_interval: float         # seconds between calls: a fresh per-minute token budget for each
+    weekly_max_chars: int          # story text sent per section (~4 chars a token), to stay under 8K tokens/min
 
 
 def _hours(raw: str) -> list[int]:
@@ -66,7 +71,11 @@ def get_settings() -> Settings:
         gemini_lead_chars=int(env("GEMINI_LEAD_CHARS", "900")),
         gemini_interval=float(env("GEMINI_INTERVAL", "7")),
         update_lookback_hours=int(env("UPDATE_LOOKBACK_HOURS", "48")),
-        gemini_weekly_model=env("GEMINI_WEEKLY_MODEL", "gemini-3.8-flash"),
+        weekly_base_url=env("WEEKLY_BASE_URL", "https://api.groq.com/openai/v1"),
+        weekly_api_key=env("WEEKLY_API_KEY"),
+        weekly_model=env("WEEKLY_MODEL", "openai/gpt-oss-120b"),
+        weekly_interval=float(env("WEEKLY_INTERVAL", "60")),
+        weekly_max_chars=int(env("WEEKLY_MAX_CHARS", "16000")),
     )
 
 

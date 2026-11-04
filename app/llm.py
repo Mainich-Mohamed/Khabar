@@ -333,6 +333,19 @@ def format_week_stories(stories: list[dict]) -> str:
     return "\n\n".join(blocks)
 
 
+def fit_week_stories(stories: list[dict], max_chars: int) -> list[dict]:
+    """The most recent stories whose prompt text fits in max_chars, returned oldest first.
+    One call must stay under the provider's tokens-per-minute limit. The newest story is always kept"""
+    kept, used = [], 0
+    for st in reversed(stories):
+        size = len(format_week_stories([st])) + 2          # + the blank line between stories
+        if kept and used + size > max_chars:
+            break
+        kept.append(st)
+        used += size
+    return kept[::-1]
+
+
 def format_analyses(analyses: list[tuple[str, Analysis]]) -> str:
     """The section analyses, labelled, for the editor-in-chief"""
     return "\n\n".join(f"[{label}] {a.title}\n" + "\n".join(a.paragraphs) for label, a in analyses)
@@ -798,8 +811,14 @@ class Summarizer:
         return Overview(intro=intro, subject=subject), usage
 
 
-def make_summarizer(s: Settings, model: str | None = None) -> Summarizer:
-    """model overrides GEMINI_MODEL: the weekly analysis passes s.gemini_weekly_model"""
-    client = GeminiClient(s.gemini_api_key, model or s.gemini_model)
+def make_summarizer(s: Settings) -> Summarizer:
+    client = GeminiClient(s.gemini_api_key, s.gemini_model)
     return Summarizer(client, s.digest_language, s.max_stories_per_category,
                       s.gemini_max_input, s.gemini_lead_chars, s.gemini_interval, s.digest_voice)
+
+
+def make_weekly_summarizer(s: Settings) -> Summarizer:
+    """The Sunday expert analysis, on WEEKLY_MODEL through an OpenAI-compatible API (Groq by default)"""
+    client = OpenAICompatClient(s.weekly_base_url, s.weekly_api_key, s.weekly_model)
+    return Summarizer(client, s.digest_language, s.max_stories_per_category,
+                      s.gemini_max_input, s.gemini_lead_chars, s.weekly_interval, s.digest_voice)

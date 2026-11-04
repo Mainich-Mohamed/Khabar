@@ -756,9 +756,31 @@ def test_expert_prompt_schema_and_temperature():
     assert a.references[0]["title"] == "Story 1" and usage.input_tokens == 10
 
 
-def test_make_summarizer_model_override(settings):
-    assert make_summarizer(settings, settings.gemini_weekly_model).label == "gemini:gemini-weekly-test"
-    assert make_summarizer(settings).label == "gemini:gemini-test"
+def test_make_weekly_summarizer_uses_settings(settings):
+    z = llm.make_weekly_summarizer(settings)
+    assert z.label == "llm.test:weekly-test" and z.interval == 0
+    assert z.client.url == "https://llm.test/v1/chat/completions"
+
+
+def test_make_weekly_summarizer_requires_key(settings):
+    from dataclasses import replace
+    with pytest.raises(LLMError, match="WEEKLY_API_KEY"):
+        llm.make_weekly_summarizer(replace(settings, weekly_api_key=""))
+
+
+def test_fit_week_stories_keeps_everything_that_fits():
+    stories = [week_story(1), week_story(2), week_story(3)]
+    assert llm.fit_week_stories(stories, 16000) == stories
+
+
+def test_fit_week_stories_drops_the_oldest_first():
+    stories = [week_story(1), week_story(2), week_story(3)]       # each block is ~49 chars
+    assert [s["title"] for s in llm.fit_week_stories(stories, 100)] == ["Story 2", "Story 3"]
+
+
+def test_fit_week_stories_always_keeps_the_newest():
+    stories = [week_story(1), week_story(2)]
+    assert [s["title"] for s in llm.fit_week_stories(stories, 1)] == ["Story 2"]
 
 
 # --------------------------------------------------------------------------- weekly overview
