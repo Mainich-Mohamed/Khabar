@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 
 import httpx
 import pytest
@@ -572,3 +573,86 @@ def test_gemini_uses_given_schema_and_temperature(mock_client):
     gemini(mock_client, handler).generate("s", "p", schema=llm.CURIOSITY_SCHEMA, temperature=0.7)
     cfg = seen["body"]["generationConfig"]
     assert cfg["temperature"] == 0.7 and "topic" in cfg["responseSchema"]["properties"]
+
+
+# --------------------------------------------------------------------------- weekly expert
+def week_story(n: int, status: str = "new", previous: str | None = None) -> dict:
+    return {"title": f"Story {n}", "summary": f"Summary {n}", "status": status, "previous_title": previous,
+            "sources": [{"name": "BBC", "url": f"https://bbc.test/{n}"}],
+            "sent_at": datetime(2026, 11, 2 + n, 7, tzinfo=timezone.utc)}      # n=1 is Tue 3 Nov
+
+
+def test_format_week_stories_numbers_days_and_update_chain():
+    out = llm.format_week_stories([week_story(1), week_story(2, "update", "Story 1")])
+    assert out.startswith("[1] Tue 03 Nov\nTitle: Story 1\nSummary: Summary 1")
+    assert "[2] Wed 04 Nov | Update of: Story 1\nTitle: Story 2" in out
+    assert out.count("Update of") == 1
+
+
+def test_parse_analysis_maps_numbers_to_real_stories():
+    stories = [week_story(n) for n in range(1, 4)]
+    a = llm.parse_analysis({"title": " T ", "paragraphs": ["One.", "  ", "Two."], "story_ids": [3, 1]}, stories)
+    assert (a.title, a.paragraphs) == ("T", ["One.", "Two."])
+    assert a.references == [{"title": "Story 3", "sources": [{"name": "BBC", "url": "https://bbc.test/3"}]},
+                            {"title": "Story 1", "sources": [{"name": "BBC", "url": "https://bbc.test/1"}]}]
+    assert a.words == 2
+
+
+def test_parse_analysis_drops_bad_references_and_caps_them():
+    stories = [week_story(n) for n in range(1, 9)]
+    a = llm.parse_analysis({"title": "T", "paragraphs": ["P"], "story_ids": [9, 0, "x", 2, 2, 1, 3, 4, 5, 6, 7]},
+                           stories)
+    assert [r["title"] for r in a.references] == ["Story 2", "Story 1", "Story 3", "Story 4", "Story 5", "Story 6"]
+
+
+def test_parse_analysis_without_references_is_kept():
+    a = llm.parse_analysis({"title": "T", "paragraphs": ["P"], "story_ids": []}, [week_story(1)])
+    assert a.references == []
+
+
+@pytest.mark.parametrize("data", [{"title": "", "paragraphs": ["P"]}, {"title": "T", "paragraphs": []},
+                                  {"title": "T", "paragraphs": ["  ", 3]}, {}])
+def test_parse_analysis_without_title_or_text_raises(data):
+    with pytest.raises(LLMError, match="no analysis"):
+        llm.parse_analysis(data, [week_story(1)])
+
+
+def test_expert_prompt_schema_and_temperature():
+    client = FakeClient({"title": "T", "paragraphs": ["P"], "story_ids": [1]})
+    a, usage = summarizer(client).expert("Economy", "markets and money", [week_story(1)])
+    system, prompt = client.calls[0]
+    assert "specialised in Economy (markets and money)" in system and "in French" in system
+    assert prompt.startswith("This week's stories:\n\n[1] Tue 03 Nov")
+    assert client.kwargs == {"schema": llm.ANALYSIS_SCHEMA, "temperature": 0.4}
+    assert a.references[0]["title"] == "Story 1" and usage.input_tokens == 10
+
+
+def test_make_summarizer_model_override(settings):
+    assert make_summarizer(settings, settings.gemini_weekly_model).label == "gemini:gemini-weekly-test"
+    assert make_summarizer(settings).label == "gemini:gemini-test"
+
+
+# --------------------------------------------------------------------------- weekly overview
+def analysis(title="T", paragraphs=("P1", "P2")) -> llm.Analysis:
+    return llm.Analysis(title=title, paragraphs=list(paragraphs), references=[])
+
+
+def test_format_analyses_labels_each_section():
+    out = llm.format_analyses([("Economy", analysis("Rates bite")), ("Tech & AI", analysis("Chips"))])
+    assert out.startswith("[Economy] Rates bite\nP1\nP2")
+    assert "\n\n[Tech & AI] Chips\n" in out
+
+
+def test_overview_prompt_schema_and_result():
+    client = FakeClient({"intro": " The week. ", "subject": " A subject "})
+    ov, usage = summarizer(client).overview([("Economy", analysis())])
+    system, prompt = client.calls[0]
+    assert "in French" in system and prompt.startswith("Analyses:\n\n[Economy] T")
+    assert client.kwargs == {"schema": llm.OVERVIEW_SCHEMA, "temperature": 0.4}
+    assert (ov.intro, ov.subject) == ("The week.", "A subject") and usage.output_tokens == 5
+
+
+@pytest.mark.parametrize("data", [{"intro": "x"}, {"subject": "x"}, {"intro": " ", "subject": "x"}, {}])
+def test_overview_incomplete_raises(data):
+    with pytest.raises(LLMError, match="no intro or subject"):
+        summarizer(FakeClient(data)).overview([("Economy", analysis())])

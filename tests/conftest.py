@@ -39,6 +39,7 @@ def settings() -> Settings:
         digest_language="English", digest_hours=[7, 20], digest_voice="lively", max_stories_per_category=6,
         gemini_api_key="key", gemini_model="gemini-test", gemini_max_input=25,
         gemini_lead_chars=900, gemini_interval=0, update_lookback_hours=48,
+        gemini_weekly_model="gemini-weekly-test",
     )
 
 

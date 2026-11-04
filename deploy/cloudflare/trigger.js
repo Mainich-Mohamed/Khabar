@@ -2,7 +2,8 @@
 // (GitHub's own cron ran 2-3 hours late).
 //
 // Deployed by hand: paste this file into the Worker's editor in the Cloudflare dashboard.
-//   Cron trigger:  0 7,16,20 * * *   (UTC)
+//   Cron triggers: 0 7,16,20 * * *   (UTC, daily briefs and the 16:00 update)
+//                  30 20 * * SUN     (UTC, the Sunday weekly analysis)
 //   GITHUB_TOKEN:  secret, fine-grained token for this repo only, "Actions: Read and write"
 //   COMMAND:       optional text variable that overrides the mode ("check-feeds" for a test without email)
 const DISPATCH_URL =
@@ -10,9 +11,12 @@ const DISPATCH_URL =
 
 export default {
   async scheduled(controller, env, ctx) {
-    // 16:00 UTC is the short update, the other slots are full briefs. scheduledTime is the planned
-    // fire time, so a late start doesn't change the mode
-    const command = env.COMMAND || (new Date(controller.scheduledTime).getUTCHours() === 16 ? "update" : "run");
+    // 16:00 UTC is the short update, Sunday 20:30 UTC the weekly analysis, the other slots are full briefs.
+    // scheduledTime is the planned fire time, so a late start doesn't change the mode
+    const at = new Date(controller.scheduledTime);
+    const command = env.COMMAND
+      || (at.getUTCDay() === 0 && at.getUTCMinutes() === 30 ? "weekly"
+        : at.getUTCHours() === 16 ? "update" : "run");
     const res = await fetch(DISPATCH_URL, {
       method: "POST",
       headers: {

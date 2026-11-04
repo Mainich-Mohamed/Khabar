@@ -7,6 +7,8 @@
   preview-update  build the afternoon update into preview-update.html (calls the LLM, sends nothing)
   run             ingest + summarize + email the digest (what the scheduler calls)
   update          the short afternoon update (what the 16:00 trigger calls)
+  weekly          the Sunday expert analysis of the week (what the Sunday 20:30 trigger calls)
+  preview-weekly  build the weekly analysis into preview-weekly.html (calls the LLM, sends nothing)
   run-headlines   Step 1 behaviour: email raw headlines, no LLM
   scheduler       stay running and send the digest at DIGEST_HOURS
   llm-test        one tiny Gemini request: is the key/model right?
@@ -20,7 +22,7 @@ from app.config import get_settings, load_sources
 from app.digest import build_headlines
 from app.ingest import fetch_feed, ingest_all, make_client
 from app.llm import LLMError, make_summarizer
-from app.pipeline import make_emailer, run_digest, run_update
+from app.pipeline import make_emailer, run_digest, run_update, run_weekly
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)          # one line per request is too noisy
@@ -98,6 +100,22 @@ def cmd_preview_update(s) -> int:
     return 0
 
 
+def cmd_weekly(s) -> int:
+    r = run_weekly(s, send=True)
+    print(f"Sent: {r.digest.subject}" if r.digest else "No weekly analysis sent: one went out in the last hours.")
+    return 0
+
+
+def cmd_preview_weekly(s) -> int:
+    r = run_weekly(s, send=False)
+    with open("preview-weekly.html", "w", encoding="utf-8") as f:
+        f.write(r.digest.html)
+    print(f"\nSubject: {r.digest.subject}")
+    print(f"Wrote preview-weekly.html — {r.considered} stories considered, "
+          f"{r.usage.input_tokens} in / {r.usage.output_tokens} out tokens. Nothing sent.")
+    return 0
+
+
 def cmd_run_headlines(s) -> int:
     cfg = load_sources(s.sources_path)
     emailer = make_emailer(s)
@@ -140,6 +158,8 @@ def main() -> int:
         "run": cmd_run,
         "update": cmd_update,
         "preview-update": cmd_preview_update,
+        "weekly": cmd_weekly,
+        "preview-weekly": cmd_preview_weekly,
         "run-headlines": cmd_run_headlines,
         "llm-test": cmd_llm_test,
     }

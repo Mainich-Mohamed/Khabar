@@ -1,9 +1,9 @@
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from html import escape
 from zoneinfo import ZoneInfo
 
-from app.llm import Curiosity, Story
+from app.llm import Analysis, Curiosity, Overview, Story
 
 FONT = "-apple-system,'Segoe UI',Roboto,Arial,sans-serif"
 
@@ -64,6 +64,13 @@ class UpdateItem:
     key: str               # category of the story
     label: str
     story: Story
+
+
+@dataclass
+class WeeklySection:
+    key: str               # category
+    label: str
+    analysis: Analysis
 
 
 def slot_label(now: datetime) -> str:
@@ -163,6 +170,28 @@ def _update_item(n: int, it: UpdateItem) -> str:
         f'<div class="muted" style="font-size:12px;font-weight:700;letter-spacing:.08em;color:{MUTED};padding-bottom:3px">'
         f"{escape(it.label.upper())}</div>{_story(it.story)}</td></tr></table>"
     )
+
+
+def _references(refs: list[dict]) -> str:
+    """The "Based on" list under an analysis: each story title with its source links"""
+    rows = "".join(
+        f'<div class="ink" style="font-size:14px;line-height:1.4;color:{INK};padding-top:8px">{escape(r["title"])}</div>'
+        '<div class="link" style="font-size:13px">'
+        + "".join(_link(s["url"], s["name"], _LINK_ON_PAPER) for s in r["sources"]) + "</div>"
+        for r in refs)
+    return (_rule() + f'<div class="muted" style="font-size:12px;font-weight:700;letter-spacing:.08em;color:{MUTED};'
+            f'padding-top:14px">BASED ON THIS WEEK\'S STORIES</div>{rows}') if refs else ""
+
+
+def _analysis(sec: WeeklySection) -> str:
+    a = sec.analysis
+    body = "".join(f'<p class="ink" style="margin:0 0 14px;font-size:16px;line-height:1.6;color:{INK}">'
+                   f"{escape(p)}</p>" for p in a.paragraphs)
+    return _band(
+        _section_head(sec.label)
+        + f'<div class="ink" style="font-size:22px;font-weight:700;line-height:1.25;color:{INK};padding-bottom:12px">'
+          f"{escape(a.title)}</div>{body}{_references(a.references)}",
+        padding="28px 28px 22px")
 
 
 def build_summary_digest(sections: list[Section], tz: str, fallback_note: bool = True,
@@ -320,6 +349,49 @@ def build_update_digest(items: list[UpdateItem], tz: str) -> Digest:
     payload = {"generated_at": now.isoformat(), "slot": slot.lower(), "sections": list(sections.values())}
     html = _page(f"Khabar · {slot} update", teaser, bands)
     return Digest(subject=subject, html=html, text="\n".join(t), payload=payload)
+
+
+WEEKLY_NOTE = ("Analysis written by AI from the stories in this week's briefs. Events come from the linked "
+               "sources; the reasoning and scenarios are the model's own, not established fact.")
+
+
+def build_weekly_digest(sections: list[WeeklySection], tz: str, overview: Overview | None = None) -> Digest:
+    """The Sunday "Khabar Artificial Expert": an opening paragraph, then one expert analysis per section"""
+    now = datetime.now(ZoneInfo(tz))
+    start = now - timedelta(days=6)                       # the 7 days the analysis covers, today included
+    week = f"{start:%d %b} – {now:%d %b}"
+    subject = f"🧠 {overview.subject}" if overview else f"🧠 Khabar Artificial Expert · week of {start:%d %b}"
+    teaser = " · ".join(f"{s.label}: {s.analysis.title}" for s in sections[:3])
+
+    bands = [_header("Khabar Artificial Expert", f"Week of {week} · {len(sections)} sections")]
+    t = [f"Khabar Artificial Expert — week of {week}", ""]
+    if overview:
+        bands.append(_band(
+            f'<div style="color:{KICKER};font-size:12px;font-weight:700;letter-spacing:.08em">THE WEEK IN ONE PARAGRAPH</div>'
+            f'<div style="color:{ON_GREEN};font-size:17px;line-height:1.6;padding:10px 0 4px">{escape(overview.intro)}</div>',
+            bg=GREEN, cls="lead", padding="24px 28px 22px"))
+        t += ["THE WEEK IN ONE PARAGRAPH", "", overview.intro, ""]
+
+    for sec in sections:
+        a = sec.analysis
+        bands.append(_analysis(sec))
+        t += [sec.label.upper(), "", a.title, ""]
+        t += [p + "\n" for p in a.paragraphs]
+        if a.references:
+            t.append("Based on this week's stories:")
+            for r in a.references:
+                t.append(f"* {r['title']}")
+                t += [f"  - {s['name']}: {s['url']}" for s in r["sources"]]
+            t.append("")
+
+    bands.append(_footer(WEEKLY_NOTE))
+    t.append(WEEKLY_NOTE)
+    payload = {"generated_at": now.isoformat(),
+               "sections": [{"category": s.key, "label": s.label, "analysis": s.analysis.to_dict()} for s in sections]}
+    if overview:
+        payload["overview"] = {"intro": overview.intro, "subject": overview.subject}
+    return Digest(subject=subject, html=_page("Khabar · Artificial Expert", teaser, bands),
+                  text="\n".join(t), payload=payload)
 
 
 def build_headlines(rows: list[dict], categories: dict[str, str], tz: str) -> Digest:

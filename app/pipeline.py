@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 
 from app import db
 from app.config import Settings, SourcesConfig, load_sources
-from app.digest import Digest, Lead, Section, UpdateItem, build_summary_digest, build_update_digest
+from app.digest import (Digest, Lead, Section, UpdateItem, WeeklySection, build_summary_digest, build_update_digest,
+                        build_weekly_digest)
 from app.emailer import Emailer
 from app.extract import extract_leads
 from app.ingest import ingest_all
@@ -17,6 +18,8 @@ UPDATE_PER_CATEGORY = 8    # articles per category fed to the update (lead extra
 UPDATE_POOL = 40           # best articles across categories sent to the model
 MAX_UPDATE_STORIES = 5
 MIN_UPDATE_STORIES = 2     # fewer than this and no email goes out
+WEEKLY_MIN_STORIES = 3     # a section with fewer stories this week gets no analysis
+WEEKLY_GUARD_HOURS = 20    # a weekly analysis sent this recently blocks another one
 
 
 @dataclass
@@ -288,3 +291,62 @@ def run_update(s: Settings, send: bool = True) -> RunResult:
     log.info("Update built [%s]: %d articles considered, %d stories shown, %d in / %d out tokens",
              summarizer.label, len(pool), len(pairs), usage.input_tokens, usage.output_tokens)
     return RunResult(digest, p.new_articles, len(pool), usage, list(p.errors))
+
+
+def run_weekly(s: Settings, send: bool = True) -> RunResult:
+    """The Sunday "Khabar Artificial Expert": one analysis per section from the stories sent this week, with
+    GEMINI_WEEKLY_MODEL. Nothing is ingested or marked. A failed section is skipped and a failed overview only
+    loses the opening paragraph; if no section succeeds the run fails and nothing is sent"""
+    emailer = make_emailer(s) if send else None
+    summarizer = make_summarizer(s, s.gemini_weekly_model)   # raises LLMError without an API key
+    cfg = load_sources(s.sources_path)
+
+    with db.connect(s.database_url) as conn:
+        db.ensure_schema(conn)
+        if send and db.digest_sent_within(conn, "weekly", WEEKLY_GUARD_HOURS):
+            log.warning("A weekly analysis was sent in the last %d hours: not sending another", WEEKLY_GUARD_HOURS)
+            return RunResult(None, 0, 0, Usage(), [])
+        run_id = db.start_run(conn, "weekly" if send else "weekly-preview")
+        week = db.fetch_week_stories(conn)
+
+    errors, usage, sections = [], Usage(), []
+    for key, label in cfg.categories.items():
+        stories = week.get(key, [])
+        if len(stories) < WEEKLY_MIN_STORIES:
+            log.info("Weekly: skipping %s (%d stories this week)", label, len(stories))
+            continue
+        try:
+            analysis, u = summarizer.expert(label, cfg.description(key), stories)
+        except LLMError as exc:
+            errors.append(f"expert {key}: {exc}")
+            log.warning("Weekly analysis of %s failed, skipping the section: %s", label, exc)
+            if isinstance(exc, QuotaExhausted):
+                break          # every later call would fail the same way
+            continue
+        usage.add(u)
+        sections.append(WeeklySection(key, label, analysis))
+
+    overview = None
+    if sections:
+        try:
+            overview, u = summarizer.overview([(sec.label, sec.analysis) for sec in sections])
+            usage.add(u)
+        except LLMError as exc:
+            errors.append(f"overview: {exc}")
+            log.warning("Weekly overview failed, sending without the opening paragraph: %s", exc)
+
+    digest = build_weekly_digest(sections, s.timezone, overview) if sections else None
+    considered = sum(len(v) for v in week.values())
+    # Reconnect: the first connection sat idle during the LLM calls (see run_digest)
+    with db.connect(s.database_url) as conn:
+        if send and digest:
+            emailer.send(digest.subject, digest.html, digest.text)
+            db.save_digest(conn, "weekly", digest.subject, digest.payload, summarizer.label,
+                           usage.input_tokens, usage.output_tokens, [])
+        db.finish_run(conn, run_id, 0, 0, errors)
+    if digest is None:
+        raise LLMError(f"no section could be analysed ({'; '.join(errors) or 'too few stories this week'})")
+
+    log.info("Weekly built [%s]: %d stories considered, %d sections, %d in / %d out tokens",
+             summarizer.label, considered, len(sections), usage.input_tokens, usage.output_tokens)
+    return RunResult(digest, 0, considered, usage, errors)

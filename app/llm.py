@@ -177,6 +177,58 @@ CURIOSITY_SCHEMA = {
     "required": ["title", "text", "topic"],
 }
 
+EXPERT_PROMPT = """You are a senior analyst specialised in {label} ({description}). You write the section of
+the "Khabar Artificial Expert", a weekly analysis for a reader who followed the daily news briefs all week and
+now wants to understand what is really going on and where it leads.
+
+You receive this week's stories in your field, numbered, in the order they were reported. Write ONE analysis
+of 300 to 400 words in {language}, in 3 to 5 paragraphs of clear prose for a smart non-specialist:
+- What is happening: the threads and patterns that connect the stories, not a list of them. Skip minor stories.
+- Why: the causes and forces behind it. Use your expertise: history, precedents, how markets, states,
+  institutions or technologies usually behave.
+- What it means: the consequences, and what to watch next as scenarios ("if this continues, expect..."),
+  never as certainties.
+
+Strict rules:
+- Every event, number, name or quote you mention must come from the stories. Never add events or current
+  facts from memory: your knowledge of the present may be out of date.
+- Write your own reasoning as reasoning ("this suggests", "the risk is"), not as established fact.
+- No bullet points and no headings inside the analysis.
+- In story_ids list the numbers of the stories your analysis relies on most, at most 6."""
+
+ANALYSIS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string", "description": "A sharp title for the week in this field, max 12 words."},
+        "paragraphs": {"type": "array", "items": {"type": "string"},
+                       "description": "3 to 5 paragraphs, 300 to 400 words in total."},
+        "story_ids": {"type": "array", "items": {"type": "integer"},
+                      "description": "Numbers of the stories the analysis relies on most, at most 6."},
+    },
+    "required": ["title", "paragraphs", "story_ids"],
+}
+MAX_REFERENCES = 6      # the "Based on" list under each analysis
+
+OVERVIEW_PROMPT = """You are the editor-in-chief of the "Khabar Artificial Expert", a weekly analysis for a
+reader who followed the daily news briefs all week. Your experts have each analysed their field; their
+analyses are below. Write in {language}:
+- intro: ONE paragraph of 80 to 100 words on what this week was really about. Where the analyses show a
+  real link between fields (an economic move driven by a geopolitical one, a technology shaping a market...),
+  make it explicit. Do not summarise the sections one after another.
+- subject: the email subject, max 10 words, built on the week's main thread. No clickbait, no questions,
+  no exclamation marks.
+
+Strict rule: use only what the analyses say. Do not add events, numbers or names."""
+
+OVERVIEW_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "intro": {"type": "string", "description": "One paragraph, 80 to 100 words."},
+        "subject": {"type": "string", "description": "Email subject, max 10 words."},
+    },
+    "required": ["intro", "subject"],
+}
+
 
 class LLMError(RuntimeError):
     """Any provider failure. The summarizer moves on to the next provider, then to headlines"""
@@ -226,6 +278,26 @@ class Curiosity:
         return {"title": self.title, "text": self.text, "topic": self.topic, "url": self.url}
 
 
+@dataclass
+class Analysis:
+    title: str
+    paragraphs: list[str]
+    references: list[dict]     # [{"title": ..., "sources": [...]}]: stories the analysis relies on, real URLs
+
+    @property
+    def words(self) -> int:
+        return sum(len(p.split()) for p in self.paragraphs)
+
+    def to_dict(self) -> dict:
+        return {"title": self.title, "paragraphs": self.paragraphs, "references": self.references}
+
+
+@dataclass
+class Overview:
+    intro: str
+    subject: str
+
+
 # --------------------------------------------------------------------------- helpers
 def format_articles(articles: list[dict], lead_chars: int = 900) -> str:
     blocks = []
@@ -248,6 +320,22 @@ def format_candidates(candidates: list[tuple[str, Story]]) -> str:
     """Stories already summarized, numbered from 1, for the front-page editor"""
     return "\n\n".join(f"[{i}] Category: {label}\nTitle: {st.title}\nSummary: {st.summary}"
                        for i, (label, st) in enumerate(candidates, start=1))
+
+
+def format_week_stories(stories: list[dict]) -> str:
+    """The week's sent stories, numbered from 1, with their day and update chain, for the expert"""
+    blocks = []
+    for i, st in enumerate(stories, start=1):
+        head = f"[{i}] {st['sent_at']:%a %d %b}"
+        if st.get("status") == "update" and st.get("previous_title"):
+            head += f" | Update of: {st['previous_title']}"
+        blocks.append(f"{head}\nTitle: {st['title']}\nSummary: {st['summary']}")
+    return "\n\n".join(blocks)
+
+
+def format_analyses(analyses: list[tuple[str, Analysis]]) -> str:
+    """The section analyses, labelled, for the editor-in-chief"""
+    return "\n\n".join(f"[{label}] {a.title}\n" + "\n".join(a.paragraphs) for label, a in analyses)
 
 
 def parse_json_text(text: str) -> dict:
@@ -332,6 +420,22 @@ def parse_arrangement(raw, current: list[str], keys: list[str]) -> list[Placemen
         if same is not None and same < n:      # earlier only: no self-merge, no loops
             placements[n - 1].same_as = same - 1
     return placements
+
+
+def parse_analysis(data: dict, stories: list[dict]) -> Analysis:
+    """Validate the expert's answer; story numbers become the real stories (titles and links).
+    An analysis without valid references is kept: it is still worth reading"""
+    title = (data.get("title") or "").strip()
+    paragraphs = [p.strip() for p in data.get("paragraphs") or [] if isinstance(p, str) and p.strip()]
+    if not title or not paragraphs:
+        raise LLMError(f"expert returned no analysis: {str(data)[:200]}")
+    refs, seen = [], set()
+    for raw in data.get("story_ids") or []:
+        n = _valid_number(raw, len(stories))
+        if n is not None and n not in seen and len(refs) < MAX_REFERENCES:
+            seen.add(n)
+            refs.append({"title": stories[n - 1]["title"], "sources": stories[n - 1]["sources"]})
+    return Analysis(title=title, paragraphs=paragraphs, references=refs)
 
 
 def _norm(text) -> str:
@@ -582,8 +686,32 @@ class Summarizer:
                         item.title, item.topic, attempt, CURIOSITY_TRIES)
         return item, total
 
+    def expert(self, label: str, description: str, stories: list[dict]) -> tuple[Analysis, Usage]:
+        """One section of the weekly analysis: what happened in this field this week, and what it means"""
+        system = EXPERT_PROMPT.format(label=label, description=description, language=self.language)
+        # A little more freedom than the news calls (0.2): this is reasoning, not reporting
+        data, usage = self._call(system, "This week's stories:\n\n" + format_week_stories(stories),
+                                 schema=ANALYSIS_SCHEMA, temperature=0.4)
+        analysis = parse_analysis(data, stories)
+        log.info("Expert %-22s %2d stories -> %d words, %d references (%d in / %d out tokens) [%s]",
+                 label, len(stories), analysis.words, len(analysis.references),
+                 usage.input_tokens, usage.output_tokens, self.label)
+        return analysis, usage
 
-def make_summarizer(s: Settings) -> Summarizer:
-    client = GeminiClient(s.gemini_api_key, s.gemini_model)
+    def overview(self, analyses: list[tuple[str, Analysis]]) -> tuple[Overview, Usage]:
+        """The weekly email's opening paragraph and subject, written from the finished section analyses"""
+        system = OVERVIEW_PROMPT.format(language=self.language)
+        data, usage = self._call(system, "Analyses:\n\n" + format_analyses(analyses),
+                                 schema=OVERVIEW_SCHEMA, temperature=0.4)
+        intro, subject = (data.get("intro") or "").strip(), (data.get("subject") or "").strip()
+        if not intro or not subject:
+            raise LLMError(f"overview returned no intro or subject: {str(data)[:200]}")
+        log.info("Overview: %r (%d in / %d out tokens)", subject, usage.input_tokens, usage.output_tokens)
+        return Overview(intro=intro, subject=subject), usage
+
+
+def make_summarizer(s: Settings, model: str | None = None) -> Summarizer:
+    """model overrides GEMINI_MODEL: the weekly analysis passes s.gemini_weekly_model"""
+    client = GeminiClient(s.gemini_api_key, model or s.gemini_model)
     return Summarizer(client, s.digest_language, s.max_stories_per_category,
                       s.gemini_max_input, s.gemini_lead_chars, s.gemini_interval, s.digest_voice)
