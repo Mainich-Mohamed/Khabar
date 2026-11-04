@@ -2,9 +2,9 @@ from datetime import datetime
 
 import pytest
 
-from app.digest import (Lead, Section, UpdateItem, build_headlines, build_summary_digest, build_update_digest,
-                        slot_label)
-from app.llm import Curiosity, Story
+from app.digest import (Lead, Section, UpdateItem, WeeklySection, build_headlines, build_summary_digest,
+                        build_update_digest, build_weekly_digest, slot_label)
+from app.llm import Analysis, Curiosity, Overview, Story
 
 TZ = "Africa/Casablanca"
 
@@ -229,3 +229,62 @@ def test_update_digest_payload_groups_by_category_like_a_full_brief():
     assert [st["title"] for st in d.payload["sections"][0]["stories"]] == ["A1", "A2"]
     assert d.payload["sections"][0]["mode"] == "summary"
     assert d.payload["slot"] in {"morning", "afternoon", "evening"}
+
+
+# --------------------------------------------------------------------------- weekly digest
+REF = {"title": "Rates rise", "sources": [{"name": "BBC", "url": "https://bbc.test/1"}]}
+OVERVIEW = Overview(intro="The week in short.", subject="Money got expensive")
+
+
+def weekly(title="Expensive money", paragraphs=("First point.", "Second point."), refs=(REF,), key="eco",
+           label="Economy") -> WeeklySection:
+    return WeeklySection(key=key, label=label,
+                         analysis=Analysis(title=title, paragraphs=list(paragraphs), references=list(refs)))
+
+
+def test_weekly_digest_with_overview():
+    d = build_weekly_digest([weekly(), weekly("Chips", key="tech", label="Tech")], TZ, OVERVIEW)
+    assert d.subject == "🧠 Money got expensive"
+    # ">...</div>": the rendered titles, not the hidden teaser at the top that also names them
+    assert (d.html.index("THE WEEK IN ONE PARAGRAPH") < d.html.index(">Expensive money</div>")
+            < d.html.index(">Chips</div>"))
+    assert "The week in short." in d.html and "<p" in d.html and "First point." in d.html
+    assert "BASED ON THIS WEEK" in d.html and 'href="https://bbc.test/1"' in d.html
+    assert "Khabar Artificial Expert" in d.html and "2 sections" in d.html
+    assert "not established fact" in d.html
+
+
+def test_weekly_digest_without_overview():
+    d = build_weekly_digest([weekly()], TZ)
+    assert d.subject.startswith("🧠 Khabar Artificial Expert · week of ")
+    assert "THE WEEK IN ONE PARAGRAPH" not in d.html and "THE WEEK IN ONE PARAGRAPH" not in d.text
+
+
+def test_weekly_analysis_without_references_has_no_based_on():
+    d = build_weekly_digest([weekly(refs=())], TZ, OVERVIEW)
+    assert "BASED ON" not in d.html and "Based on" not in d.text
+
+
+def test_weekly_digest_escapes_html():
+    evil = {"title": "<b>Ref</b>", "sources": [{"name": "X", "url": "https://x.test/?a=1&b=2"}]}
+    d = build_weekly_digest([weekly(title="<script>x</script>", paragraphs=["A & B"], refs=[evil])], TZ,
+                            Overview(intro="<i>hi</i>", subject="S"))
+    assert "<script>" not in d.html and "&lt;script&gt;" in d.html and "A &amp; B" in d.html
+    assert "<b>Ref</b>" not in d.html and "<i>hi</i>" not in d.html
+    assert 'href="https://x.test/?a=1&amp;b=2"' in d.html
+
+
+def test_weekly_digest_text_version():
+    d = build_weekly_digest([weekly()], TZ, OVERVIEW)
+    assert "ECONOMY\n\nExpensive money\n\nFirst point.\n" in d.text
+    assert "Based on this week's stories:\n* Rates rise\n  - BBC: https://bbc.test/1" in d.text
+    assert d.text.endswith("not established fact.")
+
+
+def test_weekly_digest_payload():
+    d = build_weekly_digest([weekly(), weekly(key="tech", label="Tech")], TZ, OVERVIEW)
+    assert [s["category"] for s in d.payload["sections"]] == ["eco", "tech"]
+    assert d.payload["sections"][0]["analysis"] == weekly().analysis.to_dict()
+    assert d.payload["overview"] == {"intro": "The week in short.", "subject": "Money got expensive"}
+    assert "stories" not in d.payload["sections"][0]
+    assert "overview" not in build_weekly_digest([weekly()], TZ).payload
