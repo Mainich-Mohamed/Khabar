@@ -117,6 +117,36 @@ def fetch_recent_curiosities(conn: psycopg.Connection, days: int = 60) -> list[d
     return [r for r in rows if r["title"]]
 
 
+def fetch_week_stories(conn: psycopg.Connection, days: int = 7) -> dict[str, list[dict]]:
+    """Stories emailed in the last `days`, grouped by category, oldest first so each storyline reads in
+    order (the weekly analysis). Headline-only stories are skipped: a bare title gives the analyst nothing"""
+    rows = conn.execute(
+        """
+        SELECT created_at, payload FROM digests
+        WHERE kind IN ('summary', 'update') AND created_at > now() - make_interval(days => %s)
+        ORDER BY created_at
+        """,
+        (days,),
+    ).fetchall()
+    by_cat: dict[str, list[dict]] = {}
+
+    def add(category: str, st: dict, sent_at) -> None:
+        if not st.get("summary"):
+            return
+        by_cat.setdefault(category, []).append({
+            "title": st["title"], "summary": st["summary"], "sources": st.get("sources", []),
+            "status": st.get("status", "new"), "previous_title": st.get("previous_title"), "sent_at": sent_at})
+
+    for row in rows:
+        lead = row["payload"].get("lead")
+        if lead:   # the top story is stored outside its section
+            add(lead["category"], lead, row["created_at"])
+        for sec in row["payload"].get("sections", []):
+            for st in sec.get("stories", []):
+                add(sec["category"], st, row["created_at"])
+    return by_cat
+
+
 def save_lead(conn: psycopg.Connection, article_id: int, lead: str | None, status: str) -> None:
     conn.execute("UPDATE articles SET lead = %s, lead_status = %s WHERE id = %s", (lead, status, article_id))
 

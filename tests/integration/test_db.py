@@ -205,6 +205,41 @@ def test_fetch_recent_curiosities_newest_first_within_window(conn):
     assert db.fetch_recent_curiosities(conn) == [{"title": "New", "topic": "New topic"},
                                                  {"title": "Mid", "topic": "Mid topic"}]
 
+
+def test_fetch_week_stories_oldest_first_with_details(conn):
+    st = {"title": "Rates up again", "summary": "S", "sources": [{"name": "BBC", "url": "https://b.test"}],
+          "status": "update", "previous_title": "Rates up"}
+    save(conn, section("economy", "Rates up"), hours_ago=48)
+    save(conn, {"category": "economy", "label": "Economy", "mode": "summary", "stories": [st]})
+    week = db.fetch_week_stories(conn)
+    assert [s["title"] for s in week["economy"]] == ["Rates up", "Rates up again"]
+    assert week["economy"][0]["status"] == "new" and week["economy"][0]["sources"] == []   # defaults
+    newest = week["economy"][1]
+    assert newest["sources"] == st["sources"] and newest["previous_title"] == "Rates up"
+    assert newest["sent_at"] > week["economy"][0]["sent_at"]
+
+
+def test_fetch_week_stories_respects_window(conn):
+    # 6 / 8 days around the 7-day default, same reason as the other window tests
+    save(conn, section("tech", "In"), hours_ago=6 * 24)
+    save(conn, section("tech", "Out"), hours_ago=8 * 24)
+    assert [s["title"] for s in db.fetch_week_stories(conn)["tech"]] == ["In"]
+
+
+def test_fetch_week_stories_skips_headlines_and_other_kinds(conn):
+    save(conn, section("tech", "Just a headline", mode="headlines"))
+    save(conn, section("tech", "Raw"), kind="headlines")
+    save(conn, section("tech", "Last weekly"), kind="weekly")
+    assert db.fetch_week_stories(conn) == {}
+
+
+def test_fetch_week_stories_includes_lead_and_updates(conn):
+    payload = {"lead": {"category": "geo", "title": "Top", "summary": "Top summary"},
+               "sections": [section("geo", "Other")]}
+    db.save_digest(conn, "summary", "Subject", payload, None, 0, 0, [])
+    save(conn, section("geo", "Afternoon"), kind="update")
+    assert [s["title"] for s in db.fetch_week_stories(conn)["geo"]] == ["Top", "Other", "Afternoon"]
+
 # --------------------------------------------------------------------------- mark_sent
 @pytest.mark.parametrize("fetch", FETCHERS)
 def test_mark_sent_hides_only_marked_articles(conn, fetch):
