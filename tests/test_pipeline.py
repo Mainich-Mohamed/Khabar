@@ -4,7 +4,7 @@ import pytest
 
 from app import pipeline
 from app.digest import Section
-from app.llm import Curiosity, LLMError, Placement, QuotaExhausted, Story, Usage
+from app.llm import Analysis, Curiosity, LLMError, Overview, Placement, QuotaExhausted, Story, Usage
 from app.pipeline import (Prepared, apply_arrangement, arrange_sections, front_page, rank, run_digest,
                           summarize_sections)
 
@@ -472,3 +472,100 @@ def test_run_update_preview_sends_and_marks_nothing(updating):
     updating.z.highs = [hl("A", [1]), hl("B", [2])]
     r = pipeline.run_update(updating.wired.settings, send=False)
     assert r.digest is not None and updating.wired.sent == [] and updating.marked == []
+
+
+# --------------------------------------------------------------------------- run_weekly
+class FakeExpert:
+    """expert() answers per section label: None for an analysis, or an exception to raise"""
+    label = "fake-weekly"
+
+    def __init__(self, behaviour: dict, overview=None):
+        self.behaviour, self.overview_result, self.calls = behaviour, overview, []
+
+    def expert(self, label, description, stories):
+        self.calls.append(label)
+        result = self.behaviour.get(label)
+        if isinstance(result, Exception):
+            raise result
+        return Analysis(f"{label} analysis", ["P"], []), Usage(20, 8)
+
+    def overview(self, analyses):
+        self.calls.append("overview")
+        if isinstance(self.overview_result, Exception):
+            raise self.overview_result
+        return Overview("The week.", "Week subject"), Usage(5, 2)
+
+
+def week_of(n: int) -> list[dict]:
+    return [{"title": f"S{i}", "summary": "s", "sources": [], "status": "new", "previous_title": None}
+            for i in range(n)]
+
+
+@pytest.fixture
+def weekly(wired, monkeypatch, sources_cfg):
+    z, models, saved = FakeExpert({}), [], []
+    monkeypatch.setattr(pipeline, "load_sources", lambda path: sources_cfg)
+    monkeypatch.setattr(pipeline, "make_summarizer", lambda s, model=None: models.append(model) or z)
+    wired.db.fetch_week_stories = lambda conn: {"geopolitics": week_of(5), "tech": week_of(3)}
+    wired.db.digest_sent_within = lambda conn, kind, hours: False
+    wired.db.save_digest = lambda conn, kind, *a: saved.append(kind)
+    return SimpleNamespace(wired=wired, z=z, models=models, saved=saved, s=wired.settings)
+
+
+def test_run_weekly_sends_one_analysis_per_section(weekly):
+    r = pipeline.run_weekly(weekly.s, send=True)
+    assert weekly.z.calls == ["Geopolitics", "Tech & AI", "overview"]
+    assert weekly.models == ["gemini-weekly-test"]
+    assert len(weekly.wired.sent) == 1 and r.digest.subject == "🧠 Week subject"
+    assert weekly.saved == ["weekly"] and "finish_run" in weekly.wired.db.calls
+    assert "mark_sent" not in weekly.wired.db.calls
+    assert r.considered == 8 and r.usage.input_tokens == 45
+
+
+def test_run_weekly_skips_sections_with_too_few_stories(weekly):
+    weekly.wired.db.fetch_week_stories = lambda conn: {"geopolitics": week_of(5), "tech": week_of(2)}
+    r = pipeline.run_weekly(weekly.s, send=True)
+    assert weekly.z.calls == ["Geopolitics", "overview"]
+    assert "Tech &amp; AI" not in r.digest.html
+
+
+def test_run_weekly_failed_section_is_skipped(weekly):
+    weekly.z.behaviour = {"Geopolitics": LLMError("bad json")}
+    r = pipeline.run_weekly(weekly.s, send=True)
+    assert weekly.z.calls == ["Geopolitics", "Tech & AI", "overview"]
+    assert r.errors == ["expert geopolitics: bad json"] and len(weekly.wired.sent) == 1
+
+
+def test_run_weekly_quota_stops_the_expert_calls(weekly):
+    weekly.z.behaviour = {"Geopolitics": QuotaExhausted("daily quota")}
+    with pytest.raises(LLMError, match="no section could be analysed"):
+        pipeline.run_weekly(weekly.s, send=True)
+    assert weekly.z.calls == ["Geopolitics"]
+
+
+def test_run_weekly_every_section_failing_fails_the_run(weekly):
+    weekly.z.behaviour = {"Geopolitics": LLMError("x"), "Tech & AI": LLMError("y")}
+    with pytest.raises(LLMError, match="expert geopolitics: x; expert tech: y"):
+        pipeline.run_weekly(weekly.s, send=True)
+    assert weekly.wired.sent == [] and weekly.saved == []
+    assert "finish_run" in weekly.wired.db.calls
+
+
+def test_run_weekly_overview_failure_still_sends(weekly):
+    weekly.z.overview_result = LLMError("cut off")
+    r = pipeline.run_weekly(weekly.s, send=True)
+    assert r.digest.subject.startswith("🧠 Khabar Artificial Expert · week of ")
+    assert "THE WEEK IN ONE PARAGRAPH" not in r.digest.html
+    assert r.errors == ["overview: cut off"] and len(weekly.wired.sent) == 1
+
+
+def test_run_weekly_guard_blocks_a_second_send(weekly):
+    weekly.wired.db.digest_sent_within = lambda conn, kind, hours: kind == "weekly" and hours == 20
+    r = pipeline.run_weekly(weekly.s, send=True)
+    assert r.digest is None and weekly.z.calls == [] and weekly.wired.sent == []
+
+
+def test_run_weekly_preview_sends_nothing_and_ignores_the_guard(weekly):
+    weekly.wired.db.digest_sent_within = lambda conn, kind, hours: True
+    r = pipeline.run_weekly(weekly.s, send=False)
+    assert r.digest is not None and weekly.wired.sent == [] and weekly.saved == []

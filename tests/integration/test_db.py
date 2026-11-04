@@ -206,6 +206,15 @@ def test_fetch_recent_curiosities_newest_first_within_window(conn):
                                                  {"title": "Mid", "topic": "Mid topic"}]
 
 
+def test_digest_sent_within_checks_kind_and_window(conn):
+    assert db.digest_sent_within(conn, "weekly", 20) is False
+    save(conn, kind="summary")
+    assert db.digest_sent_within(conn, "weekly", 20) is False
+    save(conn, kind="weekly", hours_ago=2)
+    assert db.digest_sent_within(conn, "weekly", 20) is True
+    assert db.digest_sent_within(conn, "weekly", 1) is False
+
+
 def test_fetch_week_stories_oldest_first_with_details(conn):
     st = {"title": "Rates up again", "summary": "S", "sources": [{"name": "BBC", "url": "https://b.test"}],
           "status": "update", "previous_title": "Rates up"}

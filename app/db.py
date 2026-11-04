@@ -117,6 +117,15 @@ def fetch_recent_curiosities(conn: psycopg.Connection, days: int = 60) -> list[d
     return [r for r in rows if r["title"]]
 
 
+def digest_sent_within(conn: psycopg.Connection, kind: str, hours: int) -> bool:
+    """Was a digest of this kind saved in the last `hours`? Stops a re-run from emailing twice"""
+    row = conn.execute(
+        "SELECT EXISTS (SELECT 1 FROM digests WHERE kind = %s AND created_at > now() - make_interval(hours => %s)) AS sent",
+        (kind, hours),
+    ).fetchone()
+    return row["sent"]
+
+
 def fetch_week_stories(conn: psycopg.Connection, days: int = 7) -> dict[str, list[dict]]:
     """Stories emailed in the last `days`, grouped by category, oldest first so each storyline reads in
     order (the weekly analysis). Headline-only stories are skipped: a bare title gives the analyst nothing"""
