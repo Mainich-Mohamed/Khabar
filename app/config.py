@@ -28,6 +28,7 @@ class Settings:
     gemini_lead_chars: int
     gemini_interval: float         # seconds between calls (free tier per-minute limit)
     update_lookback_hours: int     # sent stories this recent are compared with new ones (updates/repeats)
+    gemini_weekly_model: str       # the Sunday expert analysis: a stronger model than the daily briefs
 
 
 def _hours(raw: str) -> list[int]:
@@ -65,6 +66,7 @@ def get_settings() -> Settings:
         gemini_lead_chars=int(env("GEMINI_LEAD_CHARS", "900")),
         gemini_interval=float(env("GEMINI_INTERVAL", "7")),
         update_lookback_hours=int(env("UPDATE_LOOKBACK_HOURS", "48")),
+        gemini_weekly_model=env("GEMINI_WEEKLY_MODEL", "gemini-3.8-flash"),
     )
 
 
