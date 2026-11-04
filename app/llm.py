@@ -478,6 +478,7 @@ def _retry_delay(error_body: dict) -> float | None:
 # --------------------------------------------------------------------------- Gemini client
 class GeminiClient:
     URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    name = "gemini"
 
     def __init__(self, api_key: str, model: str, client: httpx.Client | None = None):
         if not api_key:
@@ -553,6 +554,93 @@ class GeminiClient:
         return parse_json_text(text), usage
 
 
+# --------------------------------------------------------------------------- OpenAI-compatible client
+def _strict_schema(schema: dict) -> dict:
+    """Our JSON Schema with additionalProperties: false on every object, which strict mode requires.
+    Strict mode also needs every property listed in "required": true of the weekly schemas"""
+    out = {k: _strict_schema(v) if isinstance(v, dict) else v for k, v in schema.items()}
+    if out.get("type") == "object":
+        out["additionalProperties"] = False
+        out["properties"] = {k: _strict_schema(v) for k, v in schema["properties"].items()}
+    return out
+
+
+class OpenAICompatClient:
+    """Any OpenAI-compatible chat API (Groq, OpenRouter...), with the same interface as GeminiClient.
+    Retries once at most: on a free tier every failed attempt still counts against the daily quota"""
+
+    def __init__(self, base_url: str, api_key: str, model: str, max_tokens: int = 3000,
+                 client: httpx.Client | None = None):
+        if not api_key:
+            raise LLMError("WEEKLY_API_KEY is not set (create one at console.groq.com)")
+        self.url = base_url.rstrip("/") + "/chat/completions"
+        self.name = httpx.URL(base_url).host          # "api.groq.com" in logs and labels
+        self.model, self.max_tokens = model, max_tokens
+        self.client = client or httpx.Client(timeout=120)
+        self.headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+    def generate(self, system: str, prompt: str, schema: dict = STORIES_SCHEMA,
+                 temperature: float = 0.2) -> tuple[dict, Usage]:
+        body = {
+            "model": self.model,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+            "temperature": temperature,
+            # Reasoning models spend completion tokens on thinking too, so leave room for it
+            "max_completion_tokens": self.max_tokens,
+            "response_format": {"type": "json_schema",
+                                "json_schema": {"name": "answer", "strict": True,
+                                                "schema": _strict_schema(schema)}},
+        }
+        for attempt in (1, 2):
+            try:
+                r = self.client.post(self.url, headers=self.headers, json=body)
+            except httpx.TransportError as exc:
+                if attempt == 2:
+                    raise LLMError(f"{self.name} unreachable: {exc}") from exc
+                time.sleep(10)
+                continue
+
+            if r.status_code == 200:
+                return self._parse(r.json())
+
+            try:
+                message = r.json().get("error", {}).get("message", r.text[:300])
+            except ValueError:
+                message = r.text[:300]
+            if r.status_code == 429:
+                # A short retry-after is the per-minute limit; a long one (or none) means the day is used up
+                try:
+                    wait = float(r.headers.get("retry-after", ""))
+                except ValueError:
+                    wait = 0
+                if attempt == 1 and 0 < wait <= 65:
+                    log.warning("%s rate limit, waiting %.0fs", self.name, wait)
+                    time.sleep(wait)
+                    continue
+                raise QuotaExhausted(f"{self.name} quota used up: {message}")
+            if r.status_code in (500, 502, 503) and attempt == 1:
+                time.sleep(20)
+                continue
+            hint = ""
+            if r.status_code == 401:
+                hint = " (check WEEKLY_API_KEY)"
+            elif r.status_code == 404:
+                hint = " (check WEEKLY_MODEL: that model name is not available to this key)"
+            raise LLMError(f"{self.name} HTTP {r.status_code}: {message}{hint}")
+        raise LLMError(f"{self.name} failed after retries")
+
+    @staticmethod
+    def _parse(data: dict) -> tuple[dict, Usage]:
+        meta = data.get("usage") or {}
+        usage = Usage(meta.get("prompt_tokens", 0), meta.get("completion_tokens", 0))
+        choices = data.get("choices") or []
+        if not choices:
+            raise LLMError("model returned no choices")
+        if choices[0].get("finish_reason") == "length":
+            raise LLMError("output was cut off (max_completion_tokens); shorten the input or raise the limit")
+        return parse_json_text(choices[0].get("message", {}).get("content") or ""), usage
+
+
 # --------------------------------------------------------------------------- summarizer
 class Summarizer:
     """Turns one category's articles into stories with Gemini. Raises LLMError (or QuotaExhausted
@@ -567,7 +655,7 @@ class Summarizer:
 
     @property
     def label(self) -> str:
-        return f"gemini:{self.client.model}"
+        return f"{self.client.name}:{self.client.model}"
 
     def _wait_turn(self) -> None:
         if self._last_call is not None:

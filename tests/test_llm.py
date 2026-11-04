@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from app import llm
-from app.llm import (GeminiClient, LLMError, QuotaExhausted, Story, Summarizer, Usage, _retry_delay,
+from app.llm import (GeminiClient, LLMError, OpenAICompatClient, QuotaExhausted,Story, Summarizer, Usage, _retry_delay,
                      _to_gemini_schema, format_articles, format_candidates, format_previous, make_summarizer,
                      parse_json_text, parse_stories)
 
@@ -295,8 +295,137 @@ def test_gemini_no_candidates(mock_client):
         gemini(mock_client, lambda req: httpx.Response(200, json={"candidates": []})).generate("s", "p")
 
 
+# --------------------------------------------------------------------------- OpenAICompatClient
+def chat_response(payload: dict, finish="stop") -> httpx.Response:
+    return httpx.Response(200, json={
+        "choices": [{"message": {"content": json.dumps(payload)}, "finish_reason": finish}],
+        "usage": {"prompt_tokens": 100, "completion_tokens": 30},
+    })
+
+
+def groq(mock_client, handler) -> OpenAICompatClient:
+    return OpenAICompatClient("https://api.groq.com/openai/v1/", "secret", "gpt-test", client=mock_client(handler))
+
+
+def test_compat_requires_key():
+    with pytest.raises(LLMError, match="WEEKLY_API_KEY"):
+        OpenAICompatClient("https://api.groq.com/openai/v1", "", "m")
+
+
+def test_compat_success_sends_expected_request(mock_client):
+    seen = {}
+
+    def handler(req):
+        seen["url"], seen["auth"], seen["body"] = str(req.url), req.headers["authorization"], json.loads(req.content)
+        return chat_response({"intro": "x", "subject": "y"})
+
+    client = groq(mock_client, handler)
+    data, usage = client.generate("SYS", "PROMPT", schema=llm.OVERVIEW_SCHEMA, temperature=0.4)
+    assert data == {"intro": "x", "subject": "y"}
+    assert (usage.input_tokens, usage.output_tokens) == (100, 30)
+    assert client.name == "api.groq.com"
+    assert seen["url"] == "https://api.groq.com/openai/v1/chat/completions"
+    assert seen["auth"] == "Bearer secret"
+    body = seen["body"]
+    assert body["model"] == "gpt-test" and body["temperature"] == 0.4 and body["max_completion_tokens"] == 3000
+    assert body["messages"] == [{"role": "system", "content": "SYS"}, {"role": "user", "content": "PROMPT"}]
+    fmt = body["response_format"]
+    assert fmt["type"] == "json_schema" and fmt["json_schema"]["strict"] is True
+    assert fmt["json_schema"]["schema"]["additionalProperties"] is False
+
+
+def test_strict_schema_closes_every_object_and_keeps_the_original():
+    schema = {"type": "object", "required": ["a"], "properties": {
+        "a": {"type": "array", "items": {"type": "object", "required": ["b"],
+                                         "properties": {"b": {"type": "string"}}}}}}
+    out = llm._strict_schema(schema)
+    assert out["additionalProperties"] is False
+    assert out["properties"]["a"]["items"]["additionalProperties"] is False
+    assert "additionalProperties" not in schema                     # Gemini still gets the plain schema
+
+
+def test_compat_short_rate_limit_waits_and_retries(mock_client, monkeypatch):
+    calls, slept = [], []
+    monkeypatch.setattr(llm.time, "sleep", slept.append)
+
+    def handler(req):
+        calls.append(1)
+        if len(calls) == 1:
+            return httpx.Response(429, headers={"retry-after": "7"}, json={"error": {"message": "TPM"}})
+        return chat_response({"ok": 1})
+
+    data, _ = groq(mock_client, handler).generate("s", "p")
+    assert data == {"ok": 1} and len(calls) == 2 and slept == [7.0]
+
+
+@pytest.mark.parametrize("headers", [{"retry-after": "3600"}, {}])
+def test_compat_long_or_unknown_rate_limit_is_quota(mock_client, headers):
+    calls = []
+
+    def handler(req):
+        calls.append(1)
+        return httpx.Response(429, headers=headers, json={"error": {"message": "tokens per day"}})
+
+    with pytest.raises(QuotaExhausted, match="tokens per day"):
+        groq(mock_client, handler).generate("s", "p")
+    assert len(calls) == 1
+
+
+def test_compat_second_rate_limit_is_quota(mock_client):
+    calls = []
+
+    def handler(req):
+        calls.append(1)
+        return httpx.Response(429, headers={"retry-after": "5"}, json={"error": {"message": "TPM"}})
+
+    with pytest.raises(QuotaExhausted):
+        groq(mock_client, handler).generate("s", "p")
+    assert len(calls) == 2
+
+
+def test_compat_server_error_retries_once(mock_client):
+    calls = []
+
+    def handler(req):
+        calls.append(1)
+        return httpx.Response(503, text="over capacity")
+
+    with pytest.raises(LLMError, match="HTTP 503"):
+        groq(mock_client, handler).generate("s", "p")
+    assert len(calls) == 2
+
+
+def test_compat_transport_error_retries_then_fails(mock_client):
+    calls = []
+
+    def handler(req):
+        calls.append(1)
+        raise httpx.ConnectError("offline")
+
+    with pytest.raises(LLMError, match="api.groq.com unreachable"):
+        groq(mock_client, handler).generate("s", "p")
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("status, hint", [(401, "check WEEKLY_API_KEY"), (404, "check WEEKLY_MODEL")])
+def test_compat_config_errors_have_hints(mock_client, status, hint):
+    with pytest.raises(LLMError, match=hint):
+        groq(mock_client, lambda req: httpx.Response(status, json={"error": {"message": "nope"}})).generate("s", "p")
+
+
+def test_compat_cut_off_output(mock_client):
+    with pytest.raises(LLMError, match="max_completion_tokens"):
+        groq(mock_client, lambda req: chat_response({"a": 1}, finish="length")).generate("s", "p")
+
+
+def test_compat_no_choices(mock_client):
+    with pytest.raises(LLMError, match="no choices"):
+        groq(mock_client, lambda req: httpx.Response(200, json={"choices": []})).generate("s", "p")
+
+
 # --------------------------------------------------------------------------- Summarizer
 class FakeClient:
+    name = "fake"
     model = "fake-model"
 
     def __init__(self, data):
