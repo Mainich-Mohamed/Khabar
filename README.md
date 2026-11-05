@@ -4,7 +4,10 @@
 
 **The news, read for you. Three short briefs a day, and one expert analysis every Sunday.**
 
-https://github.com/user-attachments/assets/677b5a81-b5b6-48bb-b03a-5951912b7717
+
+
+https://github.com/user-attachments/assets/b5349c86-bb4c-45bf-ba60-c9dfa734c3f6
+
 
 </div>
 
