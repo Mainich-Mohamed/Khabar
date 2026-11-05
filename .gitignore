@@ -29,6 +29,7 @@ Thumbs.db
 # Docker data
 pgdata/.agents/
 brag-output/
+brag-output-*/
 skills-lock.json
 preview.html
 preview-update.html
