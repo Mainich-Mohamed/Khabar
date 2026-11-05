@@ -33,6 +33,12 @@ No app, no feed, no scrolling. Just your inbox.
 - **Did you know?** One curious find to end on.
 
 ### The Khabar Artificial Expert
+
+
+
+https://github.com/user-attachments/assets/0b1848c3-52bc-47de-9f69-884f73b15fb0
+
+
 Once a week, an AI analyst takes each topic and writes 300 to 400 words on:
 - **what is happening:** the events of the week, read together;
 - **why:** the forces and patterns behind them;
