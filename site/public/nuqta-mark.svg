@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Khabar">
+  <!-- Nuqta mark: the bowl and dot of the Arabic letter ba. Redrawn from brand/email-mockup/assets/mark-light.png -->
+  <style>
+    .bowl { fill: #0b5d4f; }
+    .dot { fill: #cf7f00; }
+    @media (prefers-color-scheme: dark) { .bowl { fill: #54a896; } }
+  </style>
+  <path class="bowl" d="M7 24 A53 33 0 0 0 113 24 L93 24 A33 17 0 0 1 27 24 Z"/>
+  <circle class="dot" cx="60" cy="84" r="13"/>
+</svg>

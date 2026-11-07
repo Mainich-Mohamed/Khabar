@@ -1,0 +1,33 @@
+@import "tailwindcss";
+@import "@fontsource/readex-pro/400.css";
+@import "@fontsource/readex-pro/500.css";
+@import "@fontsource/readex-pro/600.css";
+
+@theme {
+  --font-sans: "Readex Pro", system-ui, sans-serif;
+  --color-paper: #fbfcfb;
+  --color-ink: #101f1c;
+  --color-muted: #4a5955;
+  --color-rule: #e3e7e6;
+  --color-brand: #0b5d4f;
+  --color-on-brand: #ffffff;
+  --color-saffron: #cf7f00;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-paper: #06120f;
+    --color-ink: #f1f4f3;
+    --color-muted: #99a4a1;
+    --color-rule: #354541;
+    --color-brand: #54a896;
+    --color-on-brand: #06120f;
+  }
+}
+
+html { scroll-behavior: smooth; }
+body { @apply bg-paper text-ink font-sans antialiased; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
