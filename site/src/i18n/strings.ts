@@ -9,6 +9,7 @@ export const strings = {
       subheadline:
         'Khabar reads 33 trusted outlets, merges the stories about the same event, and sends you a short brief. No app, no scrolling.',
     },
+    outlets: { title: 'Khabar reads these outlets, and more' },
     form: {
       emailLabel: 'Your email',
       briefLangLabel: 'Brief language',
@@ -33,6 +34,7 @@ export const strings = {
       headline: 'ثلاث رسائل إخبارية قصيرة كل يوم، وكل خبر بمصدره.',
       subheadline: 'يقرأ خبر 33 مصدرًا موثوقًا، ويجمع الأخبار عن الحدث نفسه، ويرسل لك ملخصًا قصيرًا. بلا تطبيق وبلا سكرول.',
     },
+    outlets: { title: 'يقرأ خبر هذه المصادر وغيرها' },
     form: {
       emailLabel: 'بريدك الإلكتروني',
       briefLangLabel: 'لغة الملخص',
