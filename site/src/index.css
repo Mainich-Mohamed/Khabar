@@ -1,0 +1,56 @@
+@import "tailwindcss";
+@import "@fontsource/readex-pro/400.css";
+@import "@fontsource/readex-pro/500.css";
+@import "@fontsource/readex-pro/600.css";
+
+@theme {
+  --font-sans: "Readex Pro", system-ui, sans-serif;
+  --color-paper: #06120f;
+  --color-ink: #f1f4f3;
+  --color-muted: #99a4a1;
+  --color-rule: #354541;
+  --color-brand: #54a896;
+  --color-on-brand: #06120f;
+  --color-danger: #f97066;
+  --color-saffron: #cf7f00;
+  --color-band: #0b5d4f;
+  --color-kicker: #f3c26b; /* "Top story" label on the band */
+  --color-aside: #14241f;
+}
+
+/* Dark only: the browser draws scrollbars and form controls dark too */
+:root { color-scheme: dark; }
+html { scroll-behavior: smooth; }
+body { @apply bg-paper text-ink font-sans antialiased; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
+/* Paper grain: a static noise texture over the whole page, like good newsprint */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+
+@theme {
+  --animate-aurora: aurora 60s linear infinite;
+  @keyframes aurora {
+    from { background-position: 50% 50%, 50% 50%; }
+    to   { background-position: 350% 50%, 350% 50%; }
+  }
+}
+
+@theme inline {
+  --animate-marquee: marquee var(--duration) infinite linear;
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(calc(-100% - var(--gap))); }
+  }
+}
