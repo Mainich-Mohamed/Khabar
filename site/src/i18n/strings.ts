@@ -10,14 +10,6 @@ export const strings = {
         'Khabar reads 33 trusted outlets, merges the stories about the same event, and sends you a short brief. No app, no scrolling.',
     },
     outlets: { title: 'Khabar reads these outlets, and more' },
-    how: {
-      title: 'How Khabar works',
-      steps: [
-        { title: 'We read', body: "Khabar reads 33 trusted outlets, so you don't have to open them." },
-        { title: 'We merge', body: 'Stories about the same event become one item, so you read it once.' },
-        { title: 'You read', body: 'A short brief arrives in your inbox, with every source linked.' },
-      ],
-    },
     what: {
       title: 'What you get',
       stops: [
@@ -52,14 +44,6 @@ export const strings = {
       subheadline: 'يقرأ خبر 33 مصدرًا موثوقًا، ويجمع الأخبار عن الحدث نفسه، ويرسل لك ملخصًا قصيرًا. بلا تطبيق وبلا سكرول.',
     },
     outlets: { title: 'يقرأ خبر هذه المصادر وغيرها' },
-    how: {
-      title: 'كيف يعمل خبر',
-      steps: [
-        { title: 'نقرأ', body: 'يقرأ خبر 33 مصدرًا موثوقًا، فلا تحتاج أن تفتحها.' },
-        { title: 'نجمع', body: 'الأخبار عن الحدث نفسه تصبح خبرًا واحدًا، فتقرأه مرة واحدة.' },
-        { title: 'تقرأ', body: 'يصلك ملخص قصير في بريدك، ومعه روابط كل المصادر.' },
-      ],
-    },
     what: {
       title: 'ماذا يصلك',
       stops: [

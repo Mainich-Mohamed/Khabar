@@ -7,7 +7,7 @@ export function WhatYouGet() {
   const last = t.stops.length - 1
 
   return (
-    <section aria-labelledby="what-title" className="mx-auto max-w-6xl px-4 pb-32">
+    <section aria-labelledby="what-title" className="mx-auto max-w-6xl px-4 pt-8 pb-32">
       <h2 id="what-title" className={`text-4xl font-semibold ${lang === 'ar' ? 'leading-snug' : 'tracking-tight'}`}>
         {t.title}
       </h2>

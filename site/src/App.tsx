@@ -1,6 +1,5 @@
 import { MotionConfig } from 'motion/react'
 import { Hero } from './components/Hero'
-import { HowItWorks } from './components/HowItWorks'
 import { WhatYouGet } from './components/WhatYouGet'
 import { OutletStrip } from './components/OutletStrip'
 import { TopBar } from './components/TopBar'
@@ -14,7 +13,6 @@ export default function App() {
         <main id="top">
           <Hero />
           <OutletStrip />
-          <HowItWorks />
           <WhatYouGet />
         </main>
       </LanguageProvider>
