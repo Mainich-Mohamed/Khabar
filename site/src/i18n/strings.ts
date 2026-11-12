@@ -18,6 +18,15 @@ export const strings = {
         { title: 'You read', body: 'A short brief arrives in your inbox, with every source linked.' },
       ],
     },
+    what: {
+      title: 'What you get',
+      stops: [
+        { time: '07:00', name: 'Morning brief', body: 'The top story first, then every topic in a few lines, with sources.' },
+        { time: '16:00', name: 'Afternoon update', body: "Only what's new since the morning." },
+        { time: '20:00', name: 'Evening brief', body: "The day in full, without repeating this morning's stories." },
+        { time: 'Sunday 20:30', name: 'Khabar Artificial Expert', body: 'It rereads everything Khabar sent you that week, and explains what it means.' },
+      ],
+    },
     form: {
       emailLabel: 'Your email',
       briefLangLabel: 'Brief language',
@@ -49,6 +58,15 @@ export const strings = {
         { title: 'نقرأ', body: 'يقرأ خبر 33 مصدرًا موثوقًا، فلا تحتاج أن تفتحها.' },
         { title: 'نجمع', body: 'الأخبار عن الحدث نفسه تصبح خبرًا واحدًا، فتقرأه مرة واحدة.' },
         { title: 'تقرأ', body: 'يصلك ملخص قصير في بريدك، ومعه روابط كل المصادر.' },
+      ],
+    },
+    what: {
+      title: 'ماذا يصلك',
+      stops: [
+        { time: '07:00', name: 'ملخص الصباح', body: 'أهم خبر أولًا، ثم كل موضوع في أسطر قليلة، مع المصادر.' },
+        { time: '16:00', name: 'تحديث بعد الظهر', body: 'ما استجدّ فقط منذ الصباح.' },
+        { time: '20:00', name: 'ملخص المساء', body: 'اليوم كاملًا، دون تكرار أخبار الصباح.' },
+        { time: 'الأحد 20:30', name: 'خبير خبر الاصطناعي', body: 'يعيد قراءة كل ما أرسله خبر إليك خلال الأسبوع، ويشرح ما يعنيه.' },
       ],
     },
     form: {
