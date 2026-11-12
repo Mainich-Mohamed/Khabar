@@ -5,8 +5,10 @@ import { signup, type BriefLang } from '../lib/signup'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-/** `id` keeps label/field ids unique: the form appears twice on the page (hero and final section) */
-export function SignupForm({ id }: { id: string }) {
+/** `id` keeps label/field ids unique: the form appears twice on the page (hero and final section).
+ *  `tone="onBand"`: the form sits on the solid brand-green panel, where brand-coloured parts would vanish */
+export function SignupForm({ id, tone = 'default' }: { id: string; tone?: 'default' | 'onBand' }) {
+  const onBand = tone === 'onBand'
   const { lang } = useLanguage()
   const t = strings[lang].form
   const [email, setEmail] = useState('')
@@ -51,19 +53,20 @@ export function SignupForm({ id }: { id: string }) {
             placeholder:text-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30
             aria-[invalid=true]:border-danger"
         />
-        {error && <p id={`${id}-error`} role="alert" className="mt-1.5 text-sm text-danger">{t.errors[error]}</p>}
+        {error && <p id={`${id}-error`} role="alert" className={`mt-1.5 text-sm ${onBand ? 'font-medium text-ink' : 'text-danger'}`}>{t.errors[error]}</p>}
       </div>
 
       <fieldset>
         <legend className="text-sm font-medium">{t.briefLangLabel}</legend>
         <div className="mt-1.5 flex gap-2">
           {(['en', 'ar'] as const).map((code) => (
-            <label key={code} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-rule px-4
-              has-[:checked]:border-brand has-[:checked]:bg-brand/5">
+            <label key={code} className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-4 ${onBand
+              ? 'border-ink/30 has-[:checked]:border-ink has-[:checked]:bg-ink/10'
+              : 'border-rule has-[:checked]:border-brand has-[:checked]:bg-brand/5'}`}>
               <input type="radio" name="briefLang" value={code} checked={briefLang === code}
                 onChange={() => setBriefLang(code)} className="accent-brand" />
               <span lang={code}>{code === 'en' ? 'English' : 'العربية'}</span>
-              {code === 'ar' && <span className="rounded-full bg-saffron/15 px-2 py-0.5 text-xs">{t.soon}</span>}
+              {code === 'ar' && <span className="whitespace-nowrap rounded-full bg-saffron/15 px-2 py-0.5 text-xs">{t.soon}</span>}
             </label>
           ))}
         </div>
@@ -73,9 +76,10 @@ export function SignupForm({ id }: { id: string }) {
       <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="absolute -start-[9999px]" />
 
       <button type="submit" disabled={status === 'sending'}
-        className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-brand px-6 font-medium text-on-brand
-          transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand
-          disabled:opacity-70">
+        className={`inline-flex h-12 items-center justify-center gap-2 rounded-xl px-6 font-medium
+          transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-70 ${onBand
+            ? 'bg-ink text-paper focus-visible:outline-ink'
+            : 'bg-brand text-on-brand focus-visible:outline-brand'}`}>
         {status === 'sending' && <span aria-hidden="true" className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />}
         {status === 'sending' ? t.sending : t.submit}
       </button>
