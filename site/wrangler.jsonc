@@ -1,5 +1,5 @@
 {
-    "name": "khabar-site",
+    "name": "khabar",
     "compatibility_date": "2026-11-15",
     "assets": { "directory": "./dist" }
 }
