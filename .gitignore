@@ -19,6 +19,7 @@ compare.html
 .claude/
 CLAUDE.md
 HANDOFF.md
+.wrangler/
 
 # Editors / OS
 .vscode/
